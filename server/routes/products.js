@@ -1,0 +1,1 @@
+import{Router}from'express';import Product from'../models/Product.js';const r=Router();r.get('/',async(req,res)=>res.json(await Product.find(req.query.audience?{audience:req.query.audience}:{}).limit(100)));export default r;

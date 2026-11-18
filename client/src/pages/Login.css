@@ -1,0 +1,49 @@
+/* Login page. Shares the tokens in styles.css (--pink, --blue, --line ...). */
+.loginpage{position:relative;min-height:calc(100vh - 220px);display:grid;place-items:center;padding:40px 16px;overflow:hidden}
+.loginwin{position:relative;z-index:2;width:min(440px,100%)}
+.loginwin>.winbody{padding:22px 24px 24px}
+.lg-head{text-align:center;margin-bottom:16px}
+.lg-head p{margin:8px 0 0;font-size:14px;color:#6a6396}
+
+.loginpage .lg-phone{position:absolute;width:120px;max-width:120px;left:max(4vw,calc(50% - 400px));top:18%;transform:rotate(-12deg)}
+.lg-disc{position:absolute;right:max(4vw,calc(50% - 400px));bottom:14%}
+.loginpage .s1{left:18%;bottom:14%}.loginpage .s2{right:20%;top:12%}.loginpage .s3{left:30%;top:10%}
+
+.lg-tabs{display:grid;grid-template-columns:1fr 1fr;margin-bottom:16px;border:2px solid var(--line)}
+.lg-tabs button{padding:9px 0;border:0;background:#fff;font-family:'Pixelify Sans',sans-serif;font-size:15px;text-transform:lowercase;transition:background .15s}
+.lg-tabs button+button{border-left:2px solid var(--line)}
+.lg-tabs button:hover{background:var(--blue-l)}
+.lg-tabs button.on{background:var(--pink)}
+
+.lg-field{display:block;margin-bottom:14px}
+.lg-field>span{display:block;margin-bottom:5px;font-family:'Pixelify Sans',sans-serif;font-size:14px;text-transform:lowercase}
+.lg-field input{width:100%;padding:11px 12px;border:2px solid var(--line);background:#fff;outline:0;transition:background .15s,box-shadow .15s}
+.lg-field input::placeholder{color:#a79fd0}
+.lg-field input:focus{background:var(--blue-l);box-shadow:3px 3px 0 var(--line)}
+.lg-pw{position:relative}
+.lg-pw input{padding-right:64px}
+.lg-pw button{position:absolute;right:6px;top:50%;transform:translateY(-50%);border:0;background:none;padding:6px 8px;font-size:12px;font-weight:800;color:var(--pink-d);text-transform:lowercase}
+
+.lg-captcha{position:relative;display:flex;align-items:center;gap:12px;margin:4px 0 16px;padding:10px 12px;border:2px solid var(--line);background:#fff;font-weight:700;font-size:14px;transition:background .15s}
+.lg-captcha:hover{background:var(--blue-l)}
+.lg-captcha input{position:absolute;opacity:0;pointer-events:none}
+.lg-captcha i{width:24px;height:24px;display:grid;place-items:center;border:2px solid var(--line);background:#fff;font-style:normal;font-weight:900;color:transparent}
+.lg-captcha input:checked+i{background:var(--pink);color:var(--line)}
+.lg-captcha input:focus-visible+i{outline:3px solid var(--blue-d);outline-offset:2px}
+.lg-captcha em{margin-left:auto;font-style:normal;font-size:10px;letter-spacing:.18em;color:#8a82bd}
+
+.lg-error{margin-bottom:14px;padding:10px 12px;border:2px solid var(--line);background:#ffd0dc;font-size:13px;font-weight:700}
+.loginwin .btn:disabled{opacity:.6;cursor:wait}
+.lg-signed{display:grid;gap:12px}
+
+@media(max-width:900px){.lg-phone,.lg-disc{display:none}}
+
+/* ---- real CAPTCHA, notices, links ---- */
+.lg-captchabox{margin:4px 0 16px;min-height:78px;display:flex;justify-content:center;overflow:hidden}
+@media(max-width:420px){.lg-captchabox{justify-content:flex-start}.lg-captchabox>div{transform:scale(.86);transform-origin:0 0}}
+.lg-info{margin-bottom:14px;padding:10px 12px;border:2px solid var(--line);background:var(--blue-l);font-size:13px;font-weight:700}
+.lg-msg{margin:0;line-height:1.55;font-size:14px;word-break:break-word}
+.lg-link{display:block;margin:-6px 0 12px auto;padding:0;border:0;background:none;font-size:12px;font-weight:800;color:var(--pink-d);text-decoration:underline;text-transform:lowercase}
+.lg-link.center{margin:14px auto 0}
+.lg-resend{margin-bottom:12px}
+.lg-signed .btn{text-decoration:none}
