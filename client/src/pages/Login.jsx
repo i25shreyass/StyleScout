@@ -3,7 +3,13 @@ import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { forgotPasswordRequest, resendVerificationRequest } from '../services/api';
 import Captcha from '../components/Captcha';
-import { getProfileRequest, setPassportCache } from '../services/passport';
+import { getProfileRequest, setPassportCache, updateProfileRequest } from '../services/passport';
+import PassportFields, { EMPTY_PASSPORT, EMPTY_SIZES, toPayload } from '../components/PassportFields';
+import './Passport.css';
+
+// Answers from the one-time personalise step are kept here until the first sign-in
+// (the account can't be written to before the email is verified).
+const PENDING = 'ss_pending_passport';
 import logo from '../assets/intro/stylescout-chrome-logo.webp';
 import camera from '../assets/intro/y2k-camera.webp';
 import stickers from '../assets/intro/y2k-stickers.webp';
@@ -27,6 +33,7 @@ export default function Login() {
   const [unverified, setUnverified] = useState(false);
   const [sent, setSent] = useState(null); // { type: 'verify' | 'reset', email, emailSent? }
   const [busy, setBusy] = useState(false);
+  const [prefs, setPrefs] = useState({ sizes: EMPTY_SIZES, passport: EMPTY_PASSPORT, brandText: '' });
 
   const switchMode = (m) => {
     setMode(m);
@@ -50,20 +57,23 @@ export default function Login() {
     try {
       if (mode === 'signup') {
         const d = await signup(name, email, password, captchaToken);
-        setSent({ type: 'verify', email: email.trim().toLowerCase(), emailSent: d.emailSent !== false });
+        setSent({ type: 'verify', email: email.trim().toLowerCase(), emailSent: d.emailSent !== false, step: 'personalise' });
       } else if (mode === 'forgot') {
         await forgotPasswordRequest({ email: email.trim().toLowerCase(), captchaToken });
         setSent({ type: 'reset', email: email.trim().toLowerCase() });
       } else {
         const session = await login(email, password, captchaToken, remember);
-        // first time in? offer the optional Style Passport step
+        // first sign-in after registering: save the answers from the personalise step
         try {
-          const prof = await getProfileRequest(session.token);
-          setPassportCache(prof);
-          nav(prof.passport?.onboarded ? '/home' : '/passport?welcome=1');
-        } catch {
-          nav('/home');
-        }
+          const pending = JSON.parse(localStorage.getItem(PENDING) || 'null');
+          if (pending && pending.email === email.trim().toLowerCase()) {
+            setPassportCache(await updateProfileRequest(session.token, { sizes: pending.sizes, passport: { ...pending.passport, onboarded: true } }));
+            localStorage.removeItem(PENDING);
+          } else {
+            setPassportCache(await getProfileRequest(session.token));
+          }
+        } catch { /* the site works without a passport */ }
+        nav('/home');
       }
     } catch (err) {
       setError(err.message);
@@ -72,6 +82,17 @@ export default function Login() {
       setBusy(false);
       captchaRef.current?.reset(); // a CAPTCHA token can only be used once
     }
+  };
+
+  const finishPersonalise = (save) => {
+    if (save) {
+      const payload = toPayload(prefs);
+      localStorage.setItem(PENDING, JSON.stringify({ email: sent.email, ...payload, passport: { ...payload.passport, onboarded: true } }));
+      try { localStorage.setItem('ss_sizes', JSON.stringify(payload.sizes)); } catch { /* ignore */ }
+    } else {
+      localStorage.setItem(PENDING, JSON.stringify({ email: sent.email, sizes: EMPTY_SIZES, passport: { onboarded: true } }));
+    }
+    setSent((s) => ({ ...s, step: 'done', savedPrefs: save }));
   };
 
   const resend = async (to) => {
@@ -84,10 +105,13 @@ export default function Login() {
     }
   };
 
-  const win = user ? 'member_area.exe' : sent ? 'mailbox.exe' : mode === 'signup' ? 'new_member.exe' : mode === 'forgot' ? 'password_help.exe' : 'member_login.exe';
-  const eyebrow = user ? 'HELLO AGAIN' : sent ? 'ALMOST THERE' : mode === 'signup' ? 'NEW HERE?' : mode === 'forgot' ? 'NO WORRIES' : 'WELCOME BACK';
-  const heading = user ? `Hi, ${user.name?.split(' ')[0] || 'scout'}!` : sent ? 'Check your inbox.' : mode === 'signup' ? 'Join the scouts.' : mode === 'forgot' ? 'Forgot password?' : 'Sign in to scout.';
-  const blurb = user
+  const personalising = sent?.step === 'personalise';
+  const win = personalising ? 'personalise.exe' : user ? 'member_area.exe' : sent ? 'mailbox.exe' : mode === 'signup' ? 'new_member.exe' : mode === 'forgot' ? 'password_help.exe' : 'member_login.exe';
+  const eyebrow = personalising ? 'ACCOUNT CREATED · OPTIONAL · 30 SECONDS' : user ? 'HELLO AGAIN' : sent ? 'ALMOST THERE' : mode === 'signup' ? 'NEW HERE?' : mode === 'forgot' ? 'NO WORRIES' : 'WELCOME BACK';
+  const heading = personalising ? 'Personalise StyleScout ♡' : user ? `Hi, ${user.name?.split(' ')[0] || 'scout'}!` : sent ? 'Check your inbox.' : mode === 'signup' ? 'Join the scouts.' : mode === 'forgot' ? 'Forgot password?' : 'Sign in to scout.';
+  const blurb = personalising
+    ? 'Tell us what you shop for and we’ll tick offers that fit your size, budget and style. Everything is optional and you can change it later in your profile.'
+    : user
     ? `You're signed in as ${user.email || user.name}.`
     : sent ? ''
     : mode === 'signup' ? 'Create an account to save your sizes, wishlist and price alerts.'
@@ -135,8 +159,15 @@ export default function Login() {
                 <button className="ssi-primary" type="button" onClick={() => nav('/home')}><span>continue</span><b>→</b></button>
                 <button className="ssi-guest" type="button" onClick={logout}>log out</button>
               </div>
+            ) : personalising ? (
+              <form className="ssi-stack" onSubmit={(e) => { e.preventDefault(); finishPersonalise(true); }}>
+                <PassportFields skin="holo" showAge={false} value={prefs} onChange={setPrefs} />
+                <button className="ssi-primary" type="submit"><span>save my style</span><b>→</b></button>
+                <button type="button" className="ssi-link ssi-center" onClick={() => finishPersonalise(false)}>skip for now</button>
+              </form>
             ) : sent ? (
               <div className="ssi-stack">
+                {sent.savedPrefs && <p className="ssi-info">your style is saved ♡ it’ll be added to your account when you first sign in.</p>}
                 {sent.type === 'verify' ? (
                   <>
                     <p className="ssi-note">

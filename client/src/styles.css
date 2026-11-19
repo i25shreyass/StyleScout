@@ -834,3 +834,56 @@ tbody tr:hover{background:var(--pink-l)}
 .recentbar b{font-size:13px;margin-right:4px}
 .recentbar .chip{padding:5px 11px;border:2px solid var(--line);background:#fff;font:inherit;font-size:13px;cursor:pointer;border-radius:999px}
 .recentbar .chip:hover{background:var(--pink-l, #ffe3f3)}
+
+/* ---- Profile / Style Passport page (regular site look) ---- */
+.profpage{grid-template-columns:240px 1fr;align-items:start}
+.profside .winbody,.profside{display:grid}
+.profside .who{display:grid;justify-items:center;gap:4px;padding:16px 12px;text-align:center;border-bottom:2px dashed var(--lav)}
+.profside .who .avatar{font-size:38px}
+.profside .who small{opacity:.7;word-break:break-all}
+.profside nav{display:grid}
+.profside nav button,.profside nav a{display:block;width:100%;padding:11px 14px;border:0;border-top:1px solid var(--lav-l);background:#fff;text-align:left;font:inherit;font-weight:700;color:var(--ink);cursor:pointer;text-decoration:none}
+.profside nav button:hover,.profside nav a:hover{background:var(--pink-l)}
+.profside nav button.on{background:var(--lav-l);box-shadow:inset 4px 0 0 var(--pink-d)}
+.profmain{display:grid;gap:16px}
+.profmain .winpad{padding:16px 18px;display:grid;gap:14px}
+.profmain .lead{margin:0;opacity:.75;font-size:14px}
+.profactions{display:flex;flex-wrap:wrap;gap:10px;align-items:center}
+.profmsg{font-size:13px;font-weight:700;color:#2f6b45}.profmsg.bad{color:var(--pink-d)}
+
+.pf.site{display:grid;gap:14px}
+.pf.site .pf-sec{margin:0;padding:12px 14px 14px;border:2px solid var(--line);background:#fff;min-width:0;box-shadow:2px 2px 0 var(--lav)}
+.pf.site .pf-sec legend{padding:2px 8px;font-family:'Pixelify Sans',sans-serif;font-size:14px;background:var(--lav);border:2px solid var(--line)}
+.pf.site .pf-why{margin:4px 0 10px;font-size:12px;opacity:.7}
+.pf.site .pf-chips{display:flex;flex-wrap:wrap;gap:8px}
+.pf.site .pf-chips button{padding:6px 13px;border:2px solid var(--line);background:#fff;font:inherit;font-size:13px;font-weight:700;border-radius:999px;cursor:pointer}
+.pf.site .pf-chips button:hover{background:var(--pink-l)}
+.pf.site .pf-chips button.on{background:var(--pink);box-shadow:2px 2px 0 var(--line)}
+.pf.site .pf-sizes{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}
+.pf.site .pf-sizes label{display:grid;gap:5px;font-size:12px;font-weight:800}
+.pf.site select,.pf.site .pf-text,.proffield input{height:40px;padding:0 10px;border:2px solid var(--line);background:#fff;font:inherit;width:100%}
+.pf.site .pf-swatches{display:flex;flex-wrap:wrap;gap:8px}
+.pf.site .pf-swatches button{display:flex;align-items:center;gap:6px;padding:4px 10px 4px 5px;border:2px solid var(--line);background:#fff;font:inherit;font-size:12px;font-weight:700;border-radius:999px;cursor:pointer}
+.pf.site .pf-swatches i{width:18px;height:18px;border-radius:50%;border:1.5px solid var(--line)}
+.pf.site .pf-swatches button.on{background:var(--yellow);box-shadow:2px 2px 0 var(--line)}
+.pf.site .pf-checks{display:grid;grid-template-columns:repeat(3,1fr);gap:8px 12px}
+.pf.site .pf-checks label{display:flex;align-items:center;gap:7px;font-size:13px;font-weight:600}
+.pf.site .pf-checks input,.proftoggles input{accent-color:var(--pink-d);width:16px;height:16px}
+
+.proffield{display:grid;gap:5px;font-size:13px;font-weight:800}
+.proffield input[readonly]{background:var(--lav-l)}
+.proftoggles{display:grid;gap:12px}
+.proftoggles label{display:flex;gap:8px;align-items:flex-start;font-size:14px}
+.proftoggles small{display:block;opacity:.7;font-size:12px}
+
+.histlist{list-style:none;margin:0;padding:0;border:2px solid var(--line)}
+.histlist li{display:flex;align-items:center;gap:10px;padding:9px 12px;border-top:1px dashed var(--lav)}
+.histlist li:first-child{border-top:0}
+.histlist li:hover{background:var(--lav-l)}
+.histlist .k{width:24px;text-align:center}
+.histlist .q{flex:1;display:grid;text-align:left;border:0;background:none;padding:0;font:inherit;cursor:pointer;color:var(--ink)}
+.histlist .q:hover b{text-decoration:underline}
+.histlist .q small{opacity:.65;font-size:12px}
+.histlist .x{width:28px;height:28px;border:2px solid var(--line);background:#fff;font-weight:800;cursor:pointer}
+.histlist .x:hover{background:var(--pink)}
+@media(max-width:800px){.profpage{grid-template-columns:1fr}.pf.site .pf-checks{grid-template-columns:1fr 1fr}}

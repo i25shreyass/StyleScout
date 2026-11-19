@@ -1,50 +1,22 @@
-/* Style Passport: same holographic look as the login page (Login.css), with a wider window. */
-.pp{place-items:start center}
-.pp-entry{width:min(760px,96vw);gap:6px}
-.pp-logo img{display:block;width:min(340px,70vw);height:auto;margin:auto;filter:drop-shadow(0 10px 10px rgba(30,31,92,.25))}
-.pp-win{width:100%}
-.pp-tabs{grid-template-columns:repeat(3,1fr)}
-.pp-form{display:grid;gap:14px}
-.pp-sec{margin:0;padding:12px 14px 14px;border:1.5px solid #7f84b4;background:rgba(255,255,255,.5);min-width:0}
-.pp-sec legend{padding:0 6px;font-weight:800;font-size:14px}
-.pp-why{margin:0 0 10px;font-size:12px;color:var(--ink-soft)}
-.pp-label{display:block;font-size:13px;font-weight:800;margin:0 0 6px}
-
-.pp-chips{display:flex;flex-wrap:wrap;gap:8px}
-.pp-chips button{padding:7px 13px;border:1.5px solid #626896;background:rgba(255,255,255,.7);box-shadow:2px 2px 0 #9ea3c8;font-weight:700;font-size:13px}
-.pp-chips button:hover{background:#fff}
-.pp-chips button.on{color:#fff;border-color:#505591;background:linear-gradient(90deg,var(--blue),var(--purple) 55%,var(--pink));box-shadow:2px 2px 0 #4c518d}
-
-.pp-sizes{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}
-.pp-sizes label{display:grid;gap:5px;font-size:12px;font-weight:800}
-.pp-sizes select{height:42px;padding:0 10px;border:1.5px solid #7f84b4;background:rgba(255,255,255,.8);font:inherit}
-
-.pp-swatches{display:flex;flex-wrap:wrap;gap:8px}
-.pp-swatches button{display:flex;align-items:center;gap:6px;padding:5px 10px 5px 6px;border:1.5px solid #9397bb;background:rgba(255,255,255,.7);font-size:12px;font-weight:700;text-transform:lowercase}
-.pp-swatches i{width:18px;height:18px;border-radius:50%;border:1.5px solid #555b99}
-.pp-swatches button.on{border-color:#505591;background:#fff;box-shadow:0 0 0 2px var(--purple)}
-
-.pp-checks{display:grid;grid-template-columns:repeat(3,1fr);gap:8px 12px}
-.pp-checks label,.pp-toggles label{display:flex;align-items:center;gap:7px;font-size:13px;font-weight:600}
-.pp-checks input,.pp-toggles input{accent-color:#7168dd;width:16px;height:16px}
-.pp-toggles{display:grid;gap:12px}
-.pp-toggles label{align-items:flex-start}
-.pp-toggles small{display:block;font-weight:500;font-size:11px;color:var(--ink-soft)}
-.pp-readonly{opacity:.75}
-.pp-danger{display:grid;grid-template-columns:1fr 1fr;gap:10px}
-
-.pp-history ul{list-style:none;margin:0 0 12px;padding:0;border:1.5px solid #7f84b4;background:rgba(255,255,255,.65)}
-.pp-history li{display:flex;align-items:center;gap:10px;padding:8px 10px;border-top:1px dashed #b8bce0}
-.pp-history li:first-child{border-top:0}
-.pp-kind{width:24px;text-align:center;color:#656bbc}
-.pp-q{flex:1;display:grid;text-align:left;border:0;background:none;padding:2px 0}
-.pp-q:hover b{text-decoration:underline}
-.pp-q small{font-size:11px;color:var(--ink-soft)}
-.pp-x{width:28px;height:28px;border:1.5px solid #9397bb;background:#fff;font-weight:800}
-.pp-x:hover{background:#ffd6ec}
-
-@media(max-width:600px){
-  .pp-sizes{grid-template-columns:1fr 1fr 1fr}
-  .pp-checks{grid-template-columns:1fr 1fr}
-  .pp-danger{grid-template-columns:1fr}
-}
+/* Style Passport questions in the holographic login look (only the one-time personalise step after registering). */
+.ssi .pf{display:grid;gap:14px}
+.ssi .pf-sec{margin:0;padding:12px 14px 14px;border:1.5px solid #7f84b4;background:rgba(255,255,255,.5);min-width:0}
+.ssi .pf-sec legend{padding:0 6px;font-weight:800;font-size:14px}
+.ssi .pf-why{margin:0 0 10px;font-size:12px;color:var(--ink-soft)}
+.ssi .pf-chips{display:flex;flex-wrap:wrap;gap:8px}
+.ssi .pf-chips button{padding:7px 13px;border:1.5px solid #626896;background:rgba(255,255,255,.7);box-shadow:2px 2px 0 #9ea3c8;font-weight:700;font-size:13px}
+.ssi .pf-chips button:hover{background:#fff}
+.ssi .pf-chips button.on{color:#fff;border-color:#505591;background:linear-gradient(90deg,var(--blue),var(--purple) 55%,var(--pink));box-shadow:2px 2px 0 #4c518d}
+.ssi .pf-sizes{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}
+.ssi .pf-sizes label{display:grid;gap:5px;font-size:12px;font-weight:800}
+.ssi .pf-sizes select,.ssi .pf-text{height:42px;padding:0 10px;border:1.5px solid #7f84b4;background:rgba(255,255,255,.8);font:inherit;width:100%}
+.ssi .pf-swatches{display:flex;flex-wrap:wrap;gap:8px}
+.ssi .pf-swatches button{display:flex;align-items:center;gap:6px;padding:5px 10px 5px 6px;border:1.5px solid #9397bb;background:rgba(255,255,255,.7);font-size:12px;font-weight:700}
+.ssi .pf-swatches i{width:18px;height:18px;border-radius:50%;border:1.5px solid #555b99}
+.ssi .pf-swatches button.on{border-color:#505591;background:#fff;box-shadow:0 0 0 2px var(--purple)}
+.ssi .pf-checks{display:grid;grid-template-columns:repeat(3,1fr);gap:8px 12px}
+.ssi .pf-checks label{display:flex;align-items:center;gap:7px;font-size:13px;font-weight:600}
+.ssi .pf-checks input{accent-color:#7168dd;width:16px;height:16px}
+.ssi:has(.pf) .ssi-entry{width:min(720px,96vw)}
+.ssi:has(.pf) .ssi-win{width:100%}
+@media(max-width:600px){.ssi .pf-checks{grid-template-columns:1fr 1fr}}
