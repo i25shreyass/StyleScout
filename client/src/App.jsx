@@ -265,13 +265,30 @@ function SizePicker({ sizes, onSave }) {
 // For photo results we can't compare words, only the price of the item the photo came from (if any).
 const photoMatch = (p, src) => ({ same: false, hideTag: true, saving: src?.price ? Math.round(src.price - (p.finalPrice ?? p.price)) : null });
 
+// "view at store": a normal link that always opens in a new tab.
+// For Google results it goes through our server, which finds the store's own page
+// (first click on a product = 1 search, then saved) and redirects there.
+const storeHref = (p) => {
+  if (!p.url) return null;
+  if (!p.id.startsWith('g-') && !p.token) return p.url;          // photo results already link to the store
+  const qs = new URLSearchParams({ productId: p.id, store: p.store, fallback: p.url });
+  if (p.token) qs.set('token', p.token);
+  return `${import.meta.env.VITE_API_URL ?? ''}/api/search/go?${qs}`;
+};
+
+function StoreButton({ p }) {
+  const href = storeHref(p);
+  if (!href) return <span className="btn block blue">link unavailable</span>;
+  return <a className="btn block" href={href} target="_blank" rel="noopener noreferrer">view at store ↗</a>;
+}
+
 function LiveCard({ p, match, avg, sizes, fetchedAt }) {
   const eff = p.finalPrice ?? p.price;
   const below = avg ? Math.round(avg - eff) : 0;
   const [kind, mySize] = sizeFor(p.title, sizes || EMPTY_SIZES);
   return (
     <Window title={`${p.store.toLowerCase().replace(/\s+/g, '')}.jpg`} className="product" icon="◐">
-      <a className="productpic" href={p.url || '#'} target="_blank" rel="noreferrer">
+      <a className="productpic" href={storeHref(p) || '#'} target="_blank" rel="noopener noreferrer">
         {p.image ? <img src={p.image} alt={p.title} loading="lazy" /> : <div className="noimg">no image</div>}
         {p.belowTypical >= 15 && <span className="burst">GOOD<br />DEAL</span>}
         {match && !match.hideTag && <span className={`matchtag${match.same ? ' same' : ''}`}>{match.same ? 'likely same item' : 'similar'}</span>}
@@ -307,7 +324,7 @@ function LiveCard({ p, match, avg, sizes, fetchedAt }) {
         {fetchedAt && <small className="checked">checked {ago(fetchedAt)}</small>}
         {p.secondHand && <small className="tagline2">pre-owned</small>}
         {p.url
-          ? <a className="btn block" href={p.url} target="_blank" rel="noreferrer">view at store ↗</a>
+          ? <StoreButton p={p} />
           : <span className="btn block blue">link unavailable</span>}
       </div>
     </Window>

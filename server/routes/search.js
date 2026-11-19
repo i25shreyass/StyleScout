@@ -2,7 +2,7 @@ import { Router } from 'express';
 import rateLimit from 'express-rate-limit';
 import multer from 'multer';
 import crypto from 'crypto';
-import { searchProducts, searchByImage, SearchError } from '../services/shopping.js';
+import { searchProducts, searchByImage, findStoreLink, storeDebug, SearchError } from '../services/shopping.js';
 import { readProductLink } from '../services/linkReader.js';
 
 const r = Router();
@@ -92,6 +92,42 @@ r.post('/image', (req, res, next) => upload.single('image')(req, res, (err) => {
     console.error('Image search failed:', e);
     res.status(500).json({ message: 'Photo search failed. Please try again.' });
   }
+});
+
+// GET /api/search/offer?productId=g-123&store=Myntra&fallback=<google link>
+// Returns { url } = the store's own page when we can find it, otherwise the fallback link.
+r.get('/offer', async (req, res) => {
+  const rawId = String(req.query.productId || '');
+  const productId = rawId.startsWith('g-') ? rawId.slice(2) : '';   // only real Google product ids
+  const store = String(req.query.store || '');
+  const token = String(req.query.token || '').slice(0, 8000) || null;
+  const fallback = /^https?:\/\//.test(String(req.query.fallback || '')) ? String(req.query.fallback) : null;
+  try {
+    const url = await findStoreLink({ productId: productId || null, token, store });
+    if (!url) console.log('[store-link] no direct link, sending Google page');
+    res.json({ url: url || fallback, direct: Boolean(url), ...(req.query.debug === '1' ? { debug: storeDebug } : {}) });
+  } catch (e) {
+    console.log('[store-link] error:', e.message);
+    if (e instanceof SearchError && e.code === 'QUOTA') return res.json({ url: fallback, direct: false, note: 'out of searches today' });
+    if (e instanceof SearchError) return res.status(e.status).json({ url: fallback, direct: false, message: e.message });
+    console.error('Store link lookup failed:', e);
+    res.json({ url: fallback, direct: false });
+  }
+});
+
+// GET /api/search/go?productId=&token=&store=&fallback=
+// A plain link target: finds the store page and redirects the new tab to it.
+r.get('/go', async (req, res) => {
+  const rawId = String(req.query.productId || '');
+  const productId = rawId.startsWith('g-') ? rawId.slice(2) : '';
+  const store = String(req.query.store || '');
+  const token = String(req.query.token || '').slice(0, 8000) || null;
+  const fb = String(req.query.fallback || '');
+  const fallback = /^https:\/\/(www\.)?google\.[a-z.]+\//i.test(fb) ? fb : 'https://www.google.co.in/shopping';
+  let url = null;
+  try { url = await findStoreLink({ productId: productId || null, token, store }); }
+  catch (e) { console.log('[store-link] error:', e.message); }
+  res.redirect(302, url && /^https?:\/\//i.test(url) ? url : fallback);
 });
 
 export default r;
