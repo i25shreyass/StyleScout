@@ -12,6 +12,7 @@ import AlertButton from './components/AlertButton';
 import AlertsPage from './pages/Alerts';
 import Passport from './pages/Passport';
 import { usePassport, fitFor, recordSearch, getHistoryRequest } from './services/passport';
+import { personalise } from './services/recommend';
 import ResetPassword from './pages/ResetPassword';
 import { useAuth } from './context/AuthContext';
 import { Window, TopNav, ToastHost, toast, Phone, Disc, Sparkle, Ticker, Footer } from './components/Ui';
@@ -169,6 +170,8 @@ function ReportItems({ items, onItems }) {
 
 function FeaturedBrowser({ start = 'all', perPage = 12, filter = null, onItems }) {
   const nav = useNavigate();
+  const passport = usePassport()?.passport || null;
+  const { token } = useAuth();
   const [data, setData] = useState(null);
   const [cat, setCat] = useState(start);
   const [shown, setShown] = useState(perPage);
@@ -178,22 +181,26 @@ function FeaturedBrowser({ start = 'all', perPage = 12, filter = null, onItems }
   const imageSearch = (p) => nav(`/search?img=${encodeURIComponent(p.image)}`);
   if (!data) return <div className="products">{[0, 1, 2, 3].map((i) => <div key={i} className="skeleton" />)}</div>;
   if (!data.total) return <div className="banner soft">real products will appear here once the homepage is filled (run <b>npm run featured</b> in the server folder).</div>;
-  const cats = data.categories.filter((c) => c.items.length);
-  // "everything" mixes categories round-robin so the grid looks varied
-  const mixed = [];
-  for (let i = 0; mixed.length < data.total && i < 200; i += 1) cats.forEach((c) => { if (c.items[i]) mixed.push(c.items[i]); });
-  const catItems = cat === 'all' ? mixed : (cats.find((c) => c.key === cat)?.items || []);
+  // decision-tree ordering from the Style Passport (guests get a daily-changing mix)
+  const plan = personalise(data.categories, passport);
+  const cats = plan.cats;
+  const catItems = cat === 'all' ? plan.everything : (cats.find((c) => c.key === cat)?.items || []);
   const items = catItems.filter((p) => browseMatch(p, filter));
   return (
     <div className="featured">
       <div className="cattabs" role="tablist">
-        <button type="button" role="tab" aria-selected={cat === 'all'} className={cat === 'all' ? 'on' : ''} onClick={() => setCat('all')}>✦ everything <small>{data.total}</small></button>
+        <button type="button" role="tab" aria-selected={cat === 'all'} className={cat === 'all' ? 'on' : ''} onClick={() => setCat('all')}>{plan.personal ? '♡ for you' : '✦ everything'} <small>{data.total}</small></button>
         {cats.map((c) => (
           <button type="button" role="tab" key={c.key} aria-selected={cat === c.key} className={cat === c.key ? 'on' : ''} onClick={() => setCat(c.key)}>
             {c.icon} {c.label} <small>{c.items.length}</small>
           </button>
         ))}
       </div>
+      {plan.personal ? (
+        <p className="foryounote">♡ ordered for you: <b>{plan.reasons.join(' · ')}</b> · <Link className="uline" to="/profile">edit your style passport</Link></p>
+      ) : (
+        <p className="foryounote">✦ today&apos;s mix · {token ? <Link className="uline" to="/profile">fill in your style passport</Link> : <Link className="uline" to="/login">sign in</Link>} to see products ordered for your size, budget and style</p>
+      )}
       {onItems && <ReportItems items={catItems} onItems={onItems} />}
       {!items.length && <div className="banner soft">no products match these filters. try a wider price range or another colour.</div>}
       <div className="products">{items.slice(0, shown).map((p) => <LiveCard key={`${p.query}-${p.id}`} p={p} sizes={sizes} query={p.query} onImageSearch={imageSearch} />)}</div>

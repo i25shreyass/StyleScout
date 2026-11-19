@@ -1312,3 +1312,6 @@ body::before{filter:none;will-change:transform}
 .press span{color:#5c5787;-webkit-text-fill-color:#5c5787;text-shadow:0 1px 0 #fff}
 .brandlogo img{height:46px}
 @media(max-width:600px){.brandlogo img{height:34px}}
+
+.foryounote{margin:0;padding:8px 12px;border:1px solid #b0acc6;border-radius:10px;background:rgba(240,236,255,.8);font-size:13px}
+.foryounote b{color:#5a4790}
