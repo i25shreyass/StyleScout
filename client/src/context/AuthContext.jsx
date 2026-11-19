@@ -4,9 +4,10 @@ import { loginRequest, signupRequest } from '../services/api';
 const AuthContext = createContext(null);
 const KEY = 'stylescout_auth';
 
+// "remember me" on -> localStorage (stays logged in); off -> sessionStorage (until the browser closes).
 const readSession = () => {
   try {
-    return JSON.parse(localStorage.getItem(KEY));
+    return JSON.parse(localStorage.getItem(KEY) || sessionStorage.getItem(KEY));
   } catch {
     return null;
   }
@@ -15,11 +16,13 @@ const readSession = () => {
 export function AuthProvider({ children }) {
   const [session, setSession] = useState(readSession);
 
-  const login = useCallback(async (email, password, captchaToken) => {
+  const login = useCallback(async (email, password, captchaToken, remember = true) => {
     const cleanEmail = email.trim().toLowerCase();
     const data = await loginRequest({ email: cleanEmail, password, captchaToken });
     const next = { token: data.token, user: { ...data.user, email: cleanEmail } };
-    localStorage.setItem(KEY, JSON.stringify(next));
+    localStorage.removeItem(KEY);
+    sessionStorage.removeItem(KEY);
+    (remember ? localStorage : sessionStorage).setItem(KEY, JSON.stringify(next));
     setSession(next);
     return next;
   }, []);
@@ -33,6 +36,7 @@ export function AuthProvider({ children }) {
 
   const logout = useCallback(() => {
     localStorage.removeItem(KEY);
+    sessionStorage.removeItem(KEY);
     setSession(null);
   }, []);
 
