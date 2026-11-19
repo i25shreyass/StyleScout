@@ -47,3 +47,39 @@ export const readLinkRequest = (url) => post('/api/search/link', { url });
 
 // True when the text is a web link rather than search words.
 export const looksLikeUrl = (s) => /^(https?:\/\/)?(www\.)?[a-z0-9-]+(\.[a-z0-9-]+)+\/\S*/i.test(String(s || '').trim());
+
+// True when the text is a direct link to a picture.
+export const looksLikeImageUrl = (s) => /^(https?:\/\/)\S+\.(jpe?g|png|webp|gif|avif)(\?\S*)?$/i.test(String(s || '').trim());
+
+// Shrinks a photo to at most 1000px (JPEG) so uploads are small and quick.
+export async function shrinkImage(file, max = 1000) {
+  let bmp;
+  try { bmp = await createImageBitmap(file); } catch {
+    const e = new Error('Could not read that photo. Try a JPG or PNG.'); e.code = 'BAD_IMAGE'; throw e;
+  }
+  const k = Math.min(1, max / Math.max(bmp.width, bmp.height));
+  const c = document.createElement('canvas');
+  c.width = Math.round(bmp.width * k); c.height = Math.round(bmp.height * k);
+  c.getContext('2d').drawImage(bmp, 0, 0, c.width, c.height);
+  return new Promise((resolve, reject) => c.toBlob((b) => (b ? resolve(b) : reject(new Error('Could not process that photo.'))), 'image/jpeg', 0.85));
+}
+
+// Look-alike search from a photo (blob) or a link to a photo. Uses 1 live search.
+export async function imageSearchRequest({ blob, url }) {
+  let res;
+  try {
+    if (blob) {
+      const fd = new FormData();
+      fd.append('image', blob, 'photo.jpg');
+      res = await fetch(`${BASE}/api/search/image`, { method: 'POST', body: fd });
+    } else {
+      res = await fetch(`${BASE}/api/search/image`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ url }) });
+    }
+  } catch {
+    const e = new Error('Cannot reach the server.'); e.code = 'NETWORK'; throw e;
+  }
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) { const e = new Error(data.message || `Photo search failed (${res.status})`); e.code = data.code; throw e; }
+  if (!Array.isArray(data.results)) { const e = new Error('The search server sent an unexpected reply. Restart npm run dev.'); e.code = 'NETWORK'; throw e; }
+  return data;
+}

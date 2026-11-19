@@ -150,3 +150,52 @@ export async function searchProducts(rawQuery) {
   await writeCache(key, query, results);
   return { query, results, cached: false, fetchedAt: new Date() };
 }
+
+// ---------- Image search (Google Lens through SerpApi) ----------
+// Lens returns "visual matches"; with type=products most of them carry a price.
+function mapLensResult(m, i) {
+  const price = toNumber(m.price?.extracted_value ?? m.price?.value);
+  if (!price) return null;
+  const cur = String(m.price?.currency || '');
+  if (cur && !/₹|rs|inr/i.test(cur)) return null;          // keep Indian-rupee offers only
+  if (m.in_stock === false) return null;                     // skip out-of-stock listings
+  const store = m.source || 'Unknown store';
+  const originalPrice = toNumber(m.price?.extracted_old_value ?? m.price?.old_value);
+  return {
+    id: `l-${normalise(`${store} ${m.title}`).replace(/\s/g, '-').slice(0, 60)}`,
+    title: m.title,
+    store,
+    storeIcon: m.source_icon || null,
+    url: m.link || null,
+    image: m.thumbnail || m.image || null,
+    price,
+    originalPrice: originalPrice && originalPrice > price ? originalPrice : null,
+    discount: originalPrice && originalPrice > price ? Math.round((1 - price / originalPrice) * 100) : 0,
+    delivery: null,
+    deliveryText: null,
+    finalPrice: null,
+    rating: m.rating ?? null,
+    reviews: m.reviews ?? null,
+    secondHand: /used|refurb|pre-owned/i.test(String(m.condition || '')),
+    visual: true,                                            // found by looks, not by words
+  };
+}
+
+// cacheKey identifies the photo (hash), getImageUrl() is only called on a cache miss.
+export async function searchByImage({ cacheKey, getImageUrl }) {
+  const cached = await readCache(cacheKey);
+  if (cached) return { query: 'photo', results: cached.results, cached: true, fetchedAt: cached.fetchedAt };
+
+  const data = await callSerpApi({
+    engine: 'google_lens',
+    url: getImageUrl(),
+    country: 'in',
+    hl: 'en',
+  });
+  const rows = data.visual_matches || data.products || [];
+  const seen = new Set();
+  const mapped = rows.map(mapLensResult).filter(Boolean).filter((p) => (seen.has(p.id) ? false : seen.add(p.id)));
+  const results = scoreResults(mapped).slice(0, LIMIT());
+  await writeCache(cacheKey, 'photo', results);
+  return { query: 'photo', results, cached: false, fetchedAt: new Date() };
+}

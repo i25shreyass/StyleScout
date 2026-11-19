@@ -1,9 +1,9 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Routes, Route, Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
-import { Trash2, Plus, Search, ChevronRight, Truck, Tag, Globe } from 'lucide-react';
+import { Trash2, Plus, Search, ChevronRight, Truck, Tag, Globe, Camera } from 'lucide-react';
 import { demoProducts, score } from './data';
 import Login from './pages/Login';
-import { searchRequest, readLinkRequest, looksLikeUrl } from './services/api';
+import { searchRequest, readLinkRequest, looksLikeUrl, looksLikeImageUrl, imageSearchRequest, shrinkImage } from './services/api';
 import VerifyEmail from './pages/VerifyEmail';
 import ResetPassword from './pages/ResetPassword';
 import { useAuth } from './context/AuthContext';
@@ -202,6 +202,9 @@ function matchInfo(p, source, query) {
   return { same, saving };
 }
 
+// For photo results we can't compare words, only the price of the item the photo came from (if any).
+const photoMatch = (p, src) => ({ same: false, hideTag: true, saving: src?.price ? Math.round(src.price - (p.finalPrice ?? p.price)) : null });
+
 function LiveCard({ p, match }) {
   const delivery = p.delivery === null ? null : p.delivery === 0 ? 'free delivery' : `+ ${money(p.delivery)} delivery`;
   return (
@@ -209,7 +212,8 @@ function LiveCard({ p, match }) {
       <a className="productpic" href={p.url || '#'} target="_blank" rel="noreferrer">
         {p.image ? <img src={p.image} alt={p.title} loading="lazy" /> : <div className="noimg">no image</div>}
         {p.belowTypical >= 15 && <span className="burst">GOOD<br />DEAL</span>}
-        {match && <span className={`matchtag${match.same ? ' same' : ''}`}>{match.same ? 'likely same item' : 'similar'}</span>}
+        {match && !match.hideTag && <span className={`matchtag${match.same ? ' same' : ''}`}>{match.same ? 'likely same item' : 'similar'}</span>}
+        {p.visual && <span className="matchtag">look-alike</span>}
       </a>
       <div className="pbody">
         <b className="ptitle" title={p.title}>{p.title}</b>
@@ -224,7 +228,7 @@ function LiveCard({ p, match }) {
         ) : (
           <div className="finalline unknown" title="This store didn't share a delivery fee. The total may be higher at checkout.">delivery: check at store</div>
         )}
-        {match?.saving > 0 && <small className="saving">₹{match.saving.toLocaleString('en-IN')} cheaper than your link</small>}
+        {match?.saving > 0 && <small className="saving">₹{match.saving.toLocaleString('en-IN')} cheaper than {match.hideTag ? 'your item' : 'your link'}</small>}
         {p.belowTypical > 0 && <small>{p.belowTypical}% below the typical price here</small>}
         {p.secondHand && <small className="tagline2">pre-owned</small>}
         {p.url
@@ -243,11 +247,15 @@ function SearchPage() {
   const [link, setLink] = useState(null);         // { loading, error, query, source }
   const [linkQuery, setLinkQuery] = useState('');
   const [onlySame, setOnlySame] = useState(false);
+  const [photo, setPhoto] = useState(null);       // { preview, source } when a photo search is on screen
+  const photoRef = useRef(false);
+  const fileRef = useRef(null);
   const source = useMemo(() => (urlQ ? readLinkSource(urlQ) : null), [urlQ]);
 
   // A pasted link: read it (free), then ask the user to confirm the search words.
   useEffect(() => {
     if (!linkParam) { setLink(null); return undefined; }
+    photoRef.current = false; setPhoto(null); setLive(null);
     setInput(linkParam);
     let dead = false;
     setLink({ loading: true });
@@ -269,6 +277,28 @@ function SearchPage() {
   const [notice, setNotice] = useState('');    // shown when we fall back to demo data
   const [error, setError] = useState('');
 
+  // Photo search: an uploaded photo, or a link to a photo. Uses 1 live search.
+  const runPhoto = async ({ file, url, source }) => {
+    photoRef.current = true;
+    setParams({}); setLink(null);
+    setPhoto({ preview: file ? URL.createObjectURL(file) : url, source: source || null });
+    setLive(null); setError(''); setNotice(''); setStore('all'); setLiveCap(null); setKnownDelivery(false); setOnlySame(false);
+    setLoading(true);
+    try {
+      const blob = file ? await shrinkImage(file) : null;
+      setLive(await imageSearchRequest({ blob, url }));
+    } catch (e) {
+      setError(e.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+  const pickFile = (file) => {
+    if (!file) return;
+    if (!file.type.startsWith('image/')) { setError('Please choose a photo (JPG, PNG or WebP).'); return; }
+    runPhoto({ file });
+  };
+
   // demo-catalogue filters (used when there's no live search)
   const maxP = useMemo(() => Math.max(...demoProducts.map((p) => p.price)), []);
   const [aud, setAud] = useState(params.get('aud') || 'all');
@@ -284,6 +314,8 @@ function SearchPage() {
 
   // Run a live search whenever the ?q= in the address changes.
   useEffect(() => {
+    if (photoRef.current && !urlQ.trim()) return undefined; // a photo search is on screen
+    photoRef.current = false; setPhoto(null);
     if (!linkParam) setInput(urlQ);
     setOnlySame(false);
     setAud(params.get('aud') || 'all');
@@ -306,6 +338,8 @@ function SearchPage() {
   const submit = (e) => {
     e.preventDefault();
     const q = input.trim();
+    if (looksLikeImageUrl(q)) { runPhoto({ url: q }); return; }
+    photoRef.current = false; setPhoto(null); setLive(null);
     if (looksLikeUrl(q)) setParams({ link: q });
     else setParams(q ? { q } : {});
   };
@@ -370,7 +404,7 @@ function SearchPage() {
           <Window bar={false} className="resulthead">
             <div className="rh">
               <div>
-                <h2>{urlQ ? `results for “${urlQ}”` : linkParam ? 'scouting your link' : 'featured picks'}</h2>
+                <h2>{urlQ ? `results for “${urlQ}”` : photo ? 'look-alikes for your photo' : linkParam ? 'scouting your link' : 'featured picks'}</h2>
                 <small>
                   {linkParam && !urlQ ? 'check the search words, then scout' : loading ? 'scouting stores…' : `${count} ${liveMode ? 'live offers' : 'demo products'}`}
                   {liveMode && !loading && ` · checked ${checked}${live.cached ? ' (saved)' : ''}`}
@@ -378,7 +412,9 @@ function SearchPage() {
               </div>
               <form className="searchmini" onSubmit={submit}>
                 <Search size={15} />
-                <input value={input} onChange={(e) => setInput(e.target.value)} placeholder="search or paste a product link" aria-label="search or paste a product link" />
+                <input value={input} onChange={(e) => setInput(e.target.value)} placeholder="search, paste a product link or photo link" aria-label="search, paste a product link or photo link" />
+                <button className="btn tiny blue" type="button" title="search with a photo" aria-label="search with a photo" onClick={() => fileRef.current?.click()}><Camera size={14} /></button>
+                <input ref={fileRef} type="file" accept="image/*" hidden onChange={(e) => { pickFile(e.target.files?.[0]); e.target.value = ''; }} />
                 <button className="btn tiny" type="submit">scout</button>
               </form>
               <select value={sort} onChange={(e) => setSort(e.target.value)} aria-label="sort">
@@ -404,6 +440,7 @@ function SearchPage() {
                       <input value={linkQuery} onChange={(e) => setLinkQuery(e.target.value)} aria-label="search words" />
                     </label>
                     <div className="row"><button className="btn" type="submit">scout this →</button><button type="button" className="btn blue" onClick={() => setParams({})}>cancel</button></div>
+                    {link.source.image && <button type="button" className="btn tiny blue photobtn" onClick={() => runPhoto({ url: link.source.image, source: link.source })}>📷 find look-alikes from its photo instead</button>}
                     <small>uses 1 live search. edit the words if they look off.</small>
                   </div>
                 </form>
@@ -429,22 +466,52 @@ function SearchPage() {
             );
           })()}
 
+          {photo && liveMode && !loading && (() => {
+            const eff = (p) => p.finalPrice ?? p.price;
+            const best = live.results.length ? live.results.reduce((m, p) => (eff(p) < eff(m) ? p : m)) : null;
+            const sp = photo.source?.price;
+            return (
+              <div className="yourItem">
+                <img src={photo.preview} alt="" />
+                <div>
+                  <small>{photo.source ? `your link · ${photo.source.store}` : 'your photo'}</small>
+                  <b>{photo.source?.title || 'visual matches from Google Lens'}</b>
+                  {sp ? <span>{money(sp)}</span> : null}
+                </div>
+                <div className="verdict">{!best ? 'no priced look-alikes found'
+                  : sp && eff(best) < sp ? <>best look-alike is <b>{money(sp - eff(best))} cheaper</b> at {best.store}</>
+                  : 'look-alikes sorted by best deal ↓'}</div>
+              </div>
+            );
+          })()}
+
           {notice && <div className="banner">{notice}</div>}
           {error && <div className="banner err">{error}</div>}
-          {!urlQ && !linkParam && <div className="banner soft">these are demo products. search above to compare live prices across stores ♡</div>}
+          {!urlQ && !linkParam && !photo && (
+            <>
+              <div className="banner soft">these are demo products. search above to compare live prices across stores ♡</div>
+              <Window title="photo.exe" tone="pink" icon="📷" className="photowin">
+                <div className="photodrop" onDragOver={(e) => e.preventDefault()} onDrop={(e) => { e.preventDefault(); pickFile(e.dataTransfer.files?.[0]); }}>
+                  <p><b>search by photo</b><br />drop a picture of an outfit here, or choose one. we find look-alikes and compare prices (uses 1 live search).</p>
+                  <button type="button" className="btn" onClick={() => fileRef.current?.click()}>choose a photo</button>
+                  <small>tip: a clear photo with the item in the middle works best. you can also paste a link to a photo in the search box.</small>
+                </div>
+              </Window>
+            </>
+          )}
 
           {linkParam && !urlQ ? null : loading ? (
             <div className="products">{[0, 1, 2, 3, 4, 5].map((i) => <div key={i} className="skeleton" />)}</div>
           ) : liveMode ? (
-            <div className="products">{liveShown.map((p) => <LiveCard key={p.id} p={p} match={matchInfo(p, source, live.query)} />)}</div>
-          ) : (
+            <div className="products">{liveShown.map((p) => <LiveCard key={p.id} p={p} match={photo ? photoMatch(p, photo.source) : matchInfo(p, source, live.query)} />)}</div>
+          ) : photo ? null : (
             <div className="products">{demoShown.map((p) => <ProductCard key={p.id} p={p} />)}</div>
           )}
 
           {!loading && count === 0 && !(linkParam && !urlQ) && (
             <div className="popwrap">
               <Window title="error.exe" tone="pink" popup icon="!" onClose={() => setParams({})}>
-                <div className="notfound">ITEM NOT FOUND :(<small>try a simpler search, like “white sneakers” or “denim jacket”.</small>
+                <div className="notfound">ITEM NOT FOUND :(<small>{photo ? 'no priced look-alikes found. try a clearer photo with the item in the middle.' : 'try a simpler search, like “white sneakers” or “denim jacket”.'}</small>
                   <button className="btn blue" onClick={() => setParams({})}>clear search</button></div>
               </Window>
             </div>
