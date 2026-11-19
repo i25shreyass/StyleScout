@@ -1,1 +1,21 @@
-{"name":"stylescout-server","version":"1.0.0","type":"module","scripts":{"dev":"node --watch index.js","start":"node index.js","seed":"node seed.js"},"dependencies":{"bcryptjs":"latest","cors":"latest","dotenv":"latest","express":"latest","express-rate-limit":"latest","jsonwebtoken":"latest","mongoose":"latest","multer":"latest"}}
+{
+  "name": "stylescout-server",
+  "version": "1.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "node --watch index.js",
+    "start": "node index.js",
+    "seed": "node seed.js",
+    "featured": "node scripts/seedFeatured.js"
+  },
+  "dependencies": {
+    "bcryptjs": "latest",
+    "cors": "latest",
+    "dotenv": "latest",
+    "express": "latest",
+    "express-rate-limit": "latest",
+    "jsonwebtoken": "latest",
+    "mongoose": "latest",
+    "multer": "latest"
+  }
+}

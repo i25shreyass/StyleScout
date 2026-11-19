@@ -6,6 +6,9 @@ import { searchProducts, searchByImage, findStoreLink, getSellers, SearchError }
 import { readProductLink } from '../services/linkReader.js';
 import { readSizes, sizeStatus } from '../services/sizeReader.js';
 import Report from '../models/Report.js';
+import Featured from '../models/Featured.js';
+import { FEATURED } from '../services/featured.js';
+import { checkQuery } from '../services/queryGuard.js';
 
 const r = Router();
 
@@ -46,12 +49,40 @@ r.use(rateLimit({
 // GET /api/search?q=black+cargo+pants
 r.get('/', async (req, res) => {
   try {
+    // guardrails: don't spend searches on non-fashion queries (force=1 = "search anyway" for unclear ones)
+    const guard = checkQuery(req.query.q);
+    if (guard.verdict === 'block' || (guard.verdict === 'maybe' && req.query.force !== '1')) {
+      return res.status(422).json({ code: guard.verdict === 'block' ? 'NOT_FASHION' : 'MAYBE_NOT_FASHION', message: guard.message, category: guard.category || null });
+    }
     const out = await searchProducts(req.query.q, { refresh: req.query.refresh === '1' });
     res.json(out);
   } catch (e) {
     if (e instanceof SearchError) return res.status(e.status).json({ message: e.message, code: e.code });
     console.error('Search failed:', e);
     res.status(500).json({ message: 'Search failed. Please try again.' });
+  }
+});
+
+// GET /api/search/featured -> real products for the homepage, by category (free: read from the database)
+r.get('/featured', async (req, res) => {
+  try {
+    const rows = await Featured.find({}).lean();
+    const byCat = {};
+    for (const row of rows) (byCat[row.category] ||= []).push(row);
+    let updatedAt = null;
+    const categories = FEATURED.map((c) => {
+      const seen = new Set();
+      const items = (byCat[c.key] || []).flatMap((row) => {
+        if (!updatedAt || row.fetchedAt > updatedAt) updatedAt = row.fetchedAt;
+        return row.results.map((p) => ({ ...p, query: row.query }));
+      }).filter((p) => p.image && !seen.has(p.id) && seen.add(p.id));
+      // interleave the category's searches so the grid mixes them
+      return { key: c.key, label: c.label, icon: c.icon, queries: c.queries, items };
+    });
+    res.json({ categories, updatedAt, total: categories.reduce((n, c) => n + c.items.length, 0) });
+  } catch (e) {
+    console.error('Featured failed:', e);
+    res.status(500).json({ message: 'Could not load featured products.' });
   }
 });
 

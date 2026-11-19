@@ -29,10 +29,10 @@ export const forgotPasswordRequest = (body) => post('/api/auth/forgot-password',
 export const resetPasswordRequest = (body) => post('/api/auth/reset-password', body);
 
 // Live product search. Throws Error with .code (NO_KEY, QUOTA, NETWORK, ...) on failure.
-export async function searchRequest(q, { refresh = false } = {}) {
+export async function searchRequest(q, { refresh = false, force = false } = {}) {
   let res;
   try {
-    res = await fetch(`${BASE}/api/search?q=${encodeURIComponent(q)}${refresh ? '&refresh=1' : ''}`);
+    res = await fetch(`${BASE}/api/search?q=${encodeURIComponent(q)}${refresh ? '&refresh=1' : ''}${force ? '&force=1' : ''}`);
   } catch {
     const e = new Error('Cannot reach the server.'); e.code = 'NETWORK'; throw e;
   }
@@ -198,5 +198,16 @@ export async function reportRequest(body) {
   const res = await fetch(`${BASE}/api/search/report`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
   const data = await res.json().catch(() => ({}));
   if (!res.ok) throw new Error(data.message || 'Could not send the report.');
+  return data;
+}
+
+// Real products for the homepage, by category (free: read from the database). Cached for this visit.
+let featuredCache = null;
+export async function featuredRequest() {
+  if (featuredCache) return featuredCache;
+  const res = await fetch(`${BASE}/api/search/featured`);
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data.message || 'Could not load featured products.');
+  if (data.total) featuredCache = data;
   return data;
 }

@@ -3,7 +3,7 @@ import { Routes, Route, Link, useNavigate, useParams, useSearchParams } from 're
 import { Trash2, Plus, Search, ChevronRight, Truck, Tag, Globe, Camera } from 'lucide-react';
 import { demoProducts, score } from './data';
 import Login from './pages/Login';
-import { searchRequest, readLinkRequest, looksLikeUrl, looksLikeImageUrl, imageSearchRequest, shrinkImage, getSizesRequest, saveSizesRequest, offersRequest, sizeStockRequest, reportRequest } from './services/api';
+import { searchRequest, readLinkRequest, looksLikeUrl, looksLikeImageUrl, imageSearchRequest, shrinkImage, getSizesRequest, saveSizesRequest, offersRequest, sizeStockRequest, reportRequest, featuredRequest } from './services/api';
 import VerifyEmail from './pages/VerifyEmail';
 import WishlistPage from './pages/Wishlist';
 import SaveButton from './components/SaveButton';
@@ -68,13 +68,64 @@ function Landing() {
   );
 }
 
+/* ---------- who an item is for (from its title) ---------- */
+function audienceOf(title) {
+  const t = String(title || '').toLowerCase();
+  if (/\b(kids?|boys?|girls?|baby|infants?|toddlers?|junior)\b/.test(t)) return 'kids';
+  if (/\bunisex\b/.test(t)) return 'unisex';
+  const w = /\b(women|woman|womens|women's|ladies|lady|female|her)\b/.test(t);
+  const m = /\b(men|man|mens|men's|male|his|gents)\b/.test(t);
+  if (w && !m) return 'women';
+  if (m && !w) return 'men';
+  if (w && m) return 'unisex';
+  return null;
+}
+
+/* ---------- real products by category (homepage + empty search page) ---------- */
+function FeaturedBrowser({ start = 'all', perPage = 12 }) {
+  const nav = useNavigate();
+  const [data, setData] = useState(null);
+  const [cat, setCat] = useState(start);
+  const [shown, setShown] = useState(perPage);
+  useEffect(() => { featuredRequest().then(setData).catch(() => setData({ categories: [], total: 0 })); }, []);
+  useEffect(() => { setShown(perPage); }, [cat, perPage]);
+  const sizes = readSizes();
+  const imageSearch = (p) => nav(`/search?img=${encodeURIComponent(p.image)}`);
+  if (!data) return <div className="products">{[0, 1, 2, 3].map((i) => <div key={i} className="skeleton" />)}</div>;
+  if (!data.total) return <div className="banner soft">real products will appear here once the homepage is filled (run <b>npm run featured</b> in the server folder).</div>;
+  const cats = data.categories.filter((c) => c.items.length);
+  // "everything" mixes categories round-robin so the grid looks varied
+  const mixed = [];
+  for (let i = 0; mixed.length < data.total && i < 200; i += 1) cats.forEach((c) => { if (c.items[i]) mixed.push(c.items[i]); });
+  const items = cat === 'all' ? mixed : (cats.find((c) => c.key === cat)?.items || []);
+  return (
+    <div className="featured">
+      <div className="cattabs" role="tablist">
+        <button type="button" role="tab" aria-selected={cat === 'all'} className={cat === 'all' ? 'on' : ''} onClick={() => setCat('all')}>✦ everything <small>{data.total}</small></button>
+        {cats.map((c) => (
+          <button type="button" role="tab" key={c.key} aria-selected={cat === c.key} className={cat === c.key ? 'on' : ''} onClick={() => setCat(c.key)}>
+            {c.icon} {c.label} <small>{c.items.length}</small>
+          </button>
+        ))}
+      </div>
+      <div className="products">{items.slice(0, shown).map((p) => <LiveCard key={`${p.query}-${p.id}`} p={p} sizes={sizes} query={p.query} onImageSearch={imageSearch} />)}</div>
+      {shown < items.length && <button type="button" className="btn blue morebtn" onClick={() => setShown((n) => n + perPage * 2)}>show more ({items.length - shown} left)</button>}
+      <p className="disclaimer">real offers from our latest scouting{data.updatedAt ? ` (${ago(data.updatedAt)})` : ''}. search for live prices, or hover a photo to find look-alikes.</p>
+    </div>
+  );
+}
+
 /* ---------- home ---------- */
 function Home() {
   const nav = useNavigate();
   const [msg, setMsg] = useState(true);
-  const arrivals = demoProducts.slice(0, 3);
-  const drops = [...demoProducts].sort((a, b) => b.discount - a.discount).slice(0, 7);
-  const links = [['new arrivals', '/search'], ['best deals', '/search'], ['women', '/search?aud=women'], ['men', '/search?aud=men'], ['kids', '/search?aud=kids'], ['unisex', '/search?aud=unisex']];
+  const [feat, setFeat] = useState(null);
+  useEffect(() => { featuredRequest().then(setFeat).catch(() => {}); }, []);
+  const all = feat?.categories?.flatMap((c) => c.items) || [];
+  const heroItem = all.find((p) => p.image && p.belowTypical > 10) || all[0];
+  const drops = [...all].filter((p) => p.discount > 0).sort((a, b) => b.discount - a.discount).slice(0, 7);
+  const cats = (feat?.categories || []).filter((c) => c.items.length);
+  const links = cats.length ? cats.map((c) => [`${c.icon} ${c.label}`, `/search?q=${encodeURIComponent(c.queries[0])}`]) : [['start scouting', '/search']];
   return (
     <Page className="home">
       <div className="homegrid">
@@ -92,7 +143,9 @@ function Home() {
             </div>
           </div>
           <div className="herophoto">
-            <Window title="cute.jpg" tone="pink" icon="◐"><img src={demoProducts[0].image} alt={demoProducts[0].name} /></Window>
+            <Window title={heroItem ? `${heroItem.store.toLowerCase().replace(/\s+/g, '')}.jpg` : 'cute.jpg'} tone="pink" icon="◐">
+              {heroItem ? <img src={heroItem.image} alt={heroItem.title} /> : <img src={demoProducts[0].image} alt="" />}
+            </Window>
             <Disc className="hdisc" /><Sparkle className="s1" /><Sparkle className="s2" />
           </div>
         </div>
@@ -100,7 +153,7 @@ function Home() {
         <aside className="side">
           {msg && (
             <Window title="new message!" tone="pink" popup icon="♡" onClose={() => setMsg(false)}>
-              <div className="toastbody"><span className="bigheart">♥</span><div><small>you have</small><b>(1) new deal · up to 49% off</b></div></div>
+              <div className="toastbody"><span className="bigheart">♥</span><div><small>you have</small><b>{drops[0] ? `(${drops.length}) new deals · up to ${drops[0].discount}% off` : '(1) new deal waiting'}</b></div></div>
               <button className="btn blue block" onClick={() => setMsg(false)}>ok</button>
             </Window>
           )}
@@ -118,24 +171,17 @@ function Home() {
         <span><Globe size={22} /> <b>6 stores</b> one search</span>
       </div>
 
+      <Window title="scouted_today.exe" icon="✦" className="featuredwin">
+        <FeaturedBrowser />
+      </Window>
+
       <div className="trio">
-        <Window title="new arrivals" icon="♡" className="arrivals">
-          <div className="minis">
-            {arrivals.map((p) => (
-              <Link to={`/product/${p.id}`} key={p.id} className="mini">
-                <img src={p.image} alt={p.name} />
-                <b>{p.name}</b><small>{money(p.price)} · {p.platform}</small>
-                <span className="btn tiny">view deal →</span>
-              </Link>
-            ))}
-          </div>
-        </Window>
 
         <Window title="price drops" tone="pink" icon="★" className="playlist">
           <ol>
             {drops.map((p, i) => (
               <li key={p.id} className={i === 1 ? 'hot' : ''}>
-                <Link to={`/product/${p.id}`}><i>{String(i + 1).padStart(2, '0')}</i><span>{p.name}</span><em>{p.discount}% off</em></Link>
+                <Link to={`/search?q=${encodeURIComponent(p.query || p.title)}`}><i>{String(i + 1).padStart(2, '0')}</i><span>{p.title}</span><em>{p.discount}% off</em></Link>
               </li>
             ))}
           </ol>
@@ -491,7 +537,7 @@ function StoresButton({ p, mySize, kind }) {
   );
 }
 
-function LiveCard({ p, match, avg, sizes, fetchedAt, query = '', fit }) {
+function LiveCard({ p, match, avg, sizes, fetchedAt, query = '', fit, onImageSearch }) {
   const eff = p.finalPrice ?? p.price;
   const below = avg ? Math.round(avg - eff) : 0;
   const [kind, mySize] = sizeFor(
@@ -502,12 +548,17 @@ function LiveCard({ p, match, avg, sizes, fetchedAt, query = '', fit }) {
   return (
     <Window title={`${p.store.toLowerCase().replace(/\s+/g, '')}.jpg`} className="product" icon="◐">
       <div className="picwrap">
-      <a className="productpic" href={storeHref(p) || '#'} target="_blank" rel="noopener noreferrer">
+      <div className="productpic">
         {p.image ? <img src={p.image} alt={p.title} loading="lazy" /> : <div className="noimg">no image</div>}
+        {p.image && onImageSearch && (
+          <button type="button" className="imgsearch" onClick={() => onImageSearch(p)} aria-label={`image search for ${p.title}`}>
+            <span>⌕ image search</span><small>find look-alikes · 1 search</small>
+          </button>
+        )}
         {p.belowTypical >= 15 && <span className="burst">GOOD<br />DEAL</span>}
         {match && !match.hideTag && <span className={`matchtag${match.same ? ' same' : ''}`}>{match.same ? 'likely same item' : 'similar'}</span>}
         {p.visual && <span className="matchtag">look-alike</span>}
-      </a>
+      </div>
       <SaveButton product={{ ...p, url: storeHref(p) || p.url }} query={query} />
       </div>
       <div className="pbody">
@@ -624,6 +675,9 @@ function SearchPage() {
   }, [token]);
   const urlQ = params.get('q') || '';
   const linkParam = params.get('link') || '';
+  const imgParam = params.get('img') || '';
+  const forceQ = params.get('force') === '1';
+  const [guard, setGuard] = useState(null);   // { code, message } when a search isn't fashion
   const [input, setInput] = useState(urlQ || linkParam);
   const [link, setLink] = useState(null);         // { loading, error, query, source }
   const [linkQuery, setLinkQuery] = useState('');
@@ -704,6 +758,8 @@ function SearchPage() {
   // live filters
   const [store, setStore] = useState('all');
   const [liveCap, setLiveCap] = useState(null);
+  const [liveMin, setLiveMin] = useState(null);
+  const [liveAud, setLiveAud] = useState('all');
   const [knownDelivery, setKnownDelivery] = useState(false);
   const [brand, setBrand] = useState('all');
   const [condition, setCondition] = useState('all');   // all | new | pre-owned
@@ -717,11 +773,12 @@ function SearchPage() {
     if (!linkParam) setInput(urlQ);
     setOnlySame(false);
     setAud(params.get('aud') || 'all');
-    setStore('all'); setLiveCap(null); setKnownDelivery(false);
+    setStore('all'); setLiveCap(null); setLiveMin(null); setLiveAud('all'); setKnownDelivery(false);
     if (!urlQ.trim()) { setLive(null); setNotice(''); setError(''); setLoading(false); return undefined; }
     let dead = false;
-    setLoading(true); setError(''); setNotice('');
-    searchRequest(urlQ)
+    setLoading(true); setError(''); setNotice(''); setGuard(null);
+    const fromLinkSearch = (() => { try { return JSON.parse(sessionStorage.getItem(LINK_KEY) || 'null')?.query === normQ(urlQ); } catch { return false; } })();
+    searchRequest(urlQ, { force: forceQ || fromLinkSearch })
       .then((d) => {
         if (dead) return;
         setLive(d);
@@ -732,12 +789,22 @@ function SearchPage() {
       .catch((e) => {
         if (dead) return;
         setLive(null);
-        if (['NO_KEY', 'QUOTA', 'NETWORK', 'API'].includes(e.code)) setNotice(`live search is unavailable right now (${e.message}) — showing demo catalogue instead.`);
+        if (['NOT_FASHION', 'MAYBE_NOT_FASHION'].includes(e.code)) setGuard({ code: e.code, message: e.message });
+        else if (['NO_KEY', 'QUOTA', 'NETWORK', 'API'].includes(e.code)) setNotice(`live search is unavailable right now (${e.message}) — showing demo catalogue instead.`);
         else setError(e.message);
       })
       .finally(() => { if (!dead) setLoading(false); });
     return () => { dead = true; };
-  }, [urlQ]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [urlQ, forceQ]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // ?img=<photo url> (from "image search" on a homepage card) runs a photo search once
+  const imgDone = useRef('');
+  useEffect(() => {
+    if (!imgParam || imgDone.current === imgParam) return;
+    imgDone.current = imgParam;
+    runPhoto({ url: imgParam });
+  }, [imgParam]); // eslint-disable-line react-hooks/exhaustive-deps
+  const imageSearch = (p) => runPhoto({ url: p.image, source: { title: p.title, store: p.store, price: p.finalPrice ?? p.price, image: p.image } });
 
   const submit = (e) => {
     e.preventDefault();
@@ -764,6 +831,12 @@ function SearchPage() {
     return Object.entries(n).filter(([, c]) => c >= 2).sort((a, b) => b[1] - a[1]).slice(0, 10).map(([b]) => b);
   }, [live, liveMode]);
   const hasPreOwned = liveMode && live.results.some((p) => p.secondHand);
+  const liveAuds = useMemo(() => {
+    if (!liveMode) return [];
+    const n = {};
+    live.results.forEach((p) => { const a = audienceOf(p.title); if (a) n[a] = (n[a] || 0) + 1; });
+    return ['women', 'men', 'unisex', 'kids'].filter((a) => n[a]).map((a) => [a, n[a]]);
+  }, [live, liveMode]);
 
   const liveAvg = useMemo(() => {
     if (!liveMode || !live.results.length) return 0;
@@ -774,14 +847,16 @@ function SearchPage() {
   const liveShown = useMemo(() => {
     if (!liveMode) return [];
     const capV = liveCap ?? liveMax;
+    const minV = liveMin ?? 0;
     const eff = (p) => p.finalPrice ?? p.price;
     return live.results
       .filter((p) => (store === 'all' || p.store === store) && p.price <= capV && (!knownDelivery || p.delivery !== null) && (!onlySame || matchInfo(p, source, live.query)?.same)
+        && p.price >= minV && (liveAud === 'all' || audienceOf(p.title) === liveAud || (liveAud !== 'kids' && audienceOf(p.title) === 'unisex'))
         && (brand === 'all' || brandOf(p.title) === brand) && (condition === 'all' || (condition === 'pre-owned') === Boolean(p.secondHand)) && (p.discount || 0) >= minDisc)
       .sort((a, b) => (sort === 'final' ? eff(a) - eff(b) : sort === 'price' ? a.price - b.price : sort === 'discount' ? (b.discount || 0) - (a.discount || 0)
         : sort === 'foryou' ? (fitFor(b, passport).score - fitFor(a, passport).score) || (b.dealScore - a.dealScore)
         : b.dealScore - a.dealScore));
-  }, [live, liveMode, store, liveCap, liveMax, knownDelivery, sort, onlySame, source, passport, brand, condition, minDisc]);
+  }, [live, liveMode, store, liveCap, liveMin, liveAud, liveMax, knownDelivery, sort, onlySame, source, passport, brand, condition, minDisc]);
 
   const demoShown = useMemo(() => {
     const words = (notice ? urlQ : '').toLowerCase().split(/\s+/).filter(Boolean);
@@ -810,8 +885,31 @@ function SearchPage() {
             <div className="chips">{liveStores.map((x) => (
               <button type="button" key={x} className={`chip${store === x ? ' on' : ''}`} aria-pressed={store === x} onClick={() => setStore(x)}>{x}</button>
             ))}</div>
-            <b>max price <em>{money(liveCap ?? liveMax)}</em></b>
-            <input type="range" min="0" max={liveMax} step="50" value={liveCap ?? liveMax} onChange={(e) => setLiveCap(Number(e.target.value))} />
+            {liveAuds.length > 0 && (
+              <>
+                <b>for</b>
+                <div className="chips">
+                  <button type="button" className={`chip${liveAud === 'all' ? ' on' : ''}`} aria-pressed={liveAud === 'all'} onClick={() => setLiveAud('all')}>all</button>
+                  {liveAuds.map(([a, n]) => (
+                    <button type="button" key={a} className={`chip${liveAud === a ? ' on' : ''}`} aria-pressed={liveAud === a} onClick={() => setLiveAud(a)}>{a} <small>{n}</small></button>
+                  ))}
+                </div>
+                <small className="filternote">worked out from product names, so some items aren&apos;t labelled.</small>
+              </>
+            )}
+            <b>price range</b>
+            <div className="pricebox">
+              <label>min ₹<input type="number" inputMode="numeric" min="0" max={liveMax} step="50" value={liveMin ?? ''} placeholder="0"
+                onChange={(e) => setLiveMin(e.target.value === '' ? null : Math.max(0, Number(e.target.value)))} aria-label="minimum price" /></label>
+              <span>–</span>
+              <label>max ₹<input type="number" inputMode="numeric" min="0" step="50" value={liveCap ?? ''} placeholder={String(liveMax)}
+                onChange={(e) => setLiveCap(e.target.value === '' ? null : Math.max(0, Number(e.target.value)))} aria-label="maximum price" /></label>
+            </div>
+            <div className="dualrange">
+              <input type="range" min="0" max={liveMax} step="50" value={Math.min(liveMin ?? 0, liveCap ?? liveMax)} onChange={(e) => setLiveMin(Math.min(Number(e.target.value), liveCap ?? liveMax))} aria-label="minimum price slider" />
+              <input type="range" min="0" max={liveMax} step="50" value={liveCap ?? liveMax} onChange={(e) => setLiveCap(Math.max(Number(e.target.value), liveMin ?? 0))} aria-label="maximum price slider" />
+            </div>
+            <small className="filternote">{money(liveMin ?? 0)} to {money(liveCap ?? liveMax)}</small>
             {liveBrands.length > 1 && (
               <>
                 <b>brand</b>
@@ -835,7 +933,7 @@ function SearchPage() {
             <label className="check2"><input type="checkbox" checked={knownDelivery} onChange={(e) => setKnownDelivery(e.target.checked)} /> only show known delivery cost</label>
             {source && <label className="check2"><input type="checkbox" checked={onlySame} onChange={(e) => setOnlySame(e.target.checked)} /> only “likely same item”</label>}
             <SizePicker sizes={mySizes} onSave={saveSizes} />
-            <button className="btn block" onClick={() => { setStore('all'); setLiveCap(null); setKnownDelivery(false); setBrand('all'); setCondition('all'); setMinDisc(0); }}>reset</button>
+            <button className="btn block" onClick={() => { setStore('all'); setLiveCap(null); setLiveMin(null); setLiveAud('all'); setKnownDelivery(false); setBrand('all'); setCondition('all'); setMinDisc(0); }}>reset</button>
           </Window>
         ) : (
           <Filters f={{ aud, setAud, platform, setPlatform, sizes, colors, toggle, cap, setCap, maxP, reset: resetDemo }} />
@@ -844,7 +942,7 @@ function SearchPage() {
           <Window bar={false} className="resulthead">
             <div className="rh">
               <div>
-                <h2>{urlQ ? `results for “${urlQ}”` : photo ? 'look-alikes for your photo' : linkParam ? 'scouting your link' : 'featured picks'}</h2>
+                <h2>{urlQ ? `results for “${urlQ}”` : photo ? 'look-alikes for your photo' : linkParam ? 'scouting your link' : 'scouted today'}</h2>
                 <small>
                   {linkParam && !urlQ ? 'check the search words, then scout' : loading ? 'scouting stores…' : `${count} ${liveMode ? 'live offers' : 'demo products'}`}
                   {liveMode && !loading && ` · checked ${checked}${live.cached ? ' (saved, free)' : ''}`}
@@ -935,9 +1033,22 @@ function SearchPage() {
 
           {notice && <div className="banner">{notice}</div>}
           {error && <div className="banner err">{error}</div>}
+          {guard && (
+            <Window title="not_fashion.exe" tone="pink" icon="!" className="guardwin">
+              <div className="guardbody">
+                <p>{guard.message}</p>
+                <div className="row">
+                  {['black oversized t-shirt', 'white sneakers', 'kurta set women', 'denim jacket men'].map((s) => (
+                    <button key={s} type="button" className="chip" onClick={() => setParams({ q: s })}>⌕ {s}</button>
+                  ))}
+                </div>
+                {guard.code === 'MAYBE_NOT_FASHION' && <button type="button" className="btn blue tiny" onClick={() => setParams({ q: urlQ, force: '1' })}>search anyway (uses 1 search)</button>}
+              </div>
+            </Window>
+          )}
           {!urlQ && !linkParam && !photo && (
             <>
-              <div className="banner soft">these are demo products. search above to compare live prices across stores ♡</div>
+              <div className="banner soft">search above to compare live prices across stores ♡ or browse what we scouted today.</div>
               {recent.length > 0 && (
                 <div className="recentbar">
                   <b>your recent searches</b>
@@ -966,7 +1077,7 @@ function SearchPage() {
             <div className="products">{[0, 1, 2, 3, 4, 5].map((i) => <div key={i} className="skeleton" />)}</div>
           ) : liveMode ? (
             (() => {
-              const card = (p) => <LiveCard key={p.id} p={p} fit={fitFor(p, passport)} avg={liveAvg} sizes={mySizes} fetchedAt={live.fetchedAt} query={live.query} match={photo ? photoMatch(p, photo.source) : matchInfo(p, source, live.query)} />;
+              const card = (p) => <LiveCard key={p.id} p={p} onImageSearch={imageSearch} fit={fitFor(p, passport)} avg={liveAvg} sizes={mySizes} fetchedAt={live.fetchedAt} query={live.query} match={photo ? photoMatch(p, photo.source) : matchInfo(p, source, live.query)} />;
               if (!source || photo) return <div className="products">{liveShown.map(card)}</div>;
               const exact = liveShown.filter((p) => matchInfo(p, source, live.query)?.same);
               const similar = liveShown.filter((p) => !matchInfo(p, source, live.query)?.same);
@@ -983,7 +1094,9 @@ function SearchPage() {
                 </>
               );
             })()
-          ) : photo ? null : (
+          ) : photo ? null : (!urlQ && !linkParam && !notice) ? (
+            <FeaturedBrowser />
+          ) : (urlQ && guard) ? null : (
             <div className="products">{demoShown.map((p) => <ProductCard key={p.id} p={p} />)}</div>
           )}
 

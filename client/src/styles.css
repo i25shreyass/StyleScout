@@ -925,3 +925,35 @@ tbody tr:hover{background:var(--pink-l)}
 .sectionhead{margin:6px 0 -6px;font-size:18px;display:flex;align-items:baseline;gap:10px;flex-wrap:wrap}
 .sectionhead small{font-size:12px;font-weight:500;opacity:.7}
 @media(max-width:600px){.storeshead{flex-direction:column}.storeshead .gallery{width:100%}.storeshead .gallery>img{width:100%;height:220px}}
+
+/* ---- run 9: image search hover, price range, featured, guardrails ---- */
+.productpic{position:relative;overflow:hidden}
+.imgsearch{position:absolute;inset:0;z-index:1;display:grid;place-content:center;gap:4px;border:0;padding:0;background:rgba(23,19,47,0);color:#fff;font:inherit;cursor:pointer;opacity:0;transition:opacity .18s,background .18s}
+.imgsearch span{font-family:'Pixelify Sans',sans-serif;font-size:20px;padding:6px 12px;border:2px solid #fff;background:rgba(43,37,89,.55)}
+.imgsearch small{font-size:11px;font-weight:700;opacity:.9}
+.productpic:hover .imgsearch,.imgsearch:focus-visible{opacity:1;background:rgba(23,19,47,.55)}
+@media(hover:none){.imgsearch{opacity:1;background:transparent;place-content:end end;padding:6px}.imgsearch span{font-size:12px;padding:3px 7px}.imgsearch small{display:none}}
+.picwrap .heart{z-index:2}
+.pricebox{display:flex;align-items:center;gap:6px}
+.pricebox label{display:flex;align-items:center;gap:3px;font-size:12px;font-weight:700}
+.pricebox input{width:78px;height:32px;padding:0 6px;border:2px solid var(--line);font:inherit;font-size:13px;background:#fff}
+.dualrange{position:relative;height:26px}
+.dualrange input{position:absolute;left:0;right:0;width:100%;top:4px;pointer-events:none;background:none;-webkit-appearance:none;appearance:none}
+.dualrange input::-webkit-slider-thumb{pointer-events:auto}
+.dualrange input::-moz-range-thumb{pointer-events:auto}
+.dualrange input:first-child{z-index:2}
+.filternote{font-size:11px;opacity:.7}
+.featured{display:grid;gap:14px}
+.featuredwin .featured{padding:14px}
+.cattabs{display:flex;gap:6px;overflow-x:auto;padding-bottom:4px}
+.cattabs button{flex:none;padding:7px 12px;border:2px solid var(--line);background:#fff;font:inherit;font-size:13px;font-weight:700;cursor:pointer;white-space:nowrap}
+.cattabs button small{opacity:.6;font-weight:500;margin-left:3px}
+.cattabs button:hover{background:var(--pink-l)}
+.cattabs button.on{background:var(--pink);box-shadow:2px 2px 0 var(--line)}
+.morebtn{justify-self:center}
+.guardwin{margin:4px 0}
+.guardbody{padding:14px;display:grid;gap:10px}
+.guardbody p{margin:0;font-weight:600}
+.guardbody .row{display:flex;flex-wrap:wrap;gap:8px}
+.guardbody .chip{padding:5px 11px;border:2px solid var(--line);background:#fff;border-radius:999px;font:inherit;font-size:13px;cursor:pointer}
+.guardbody .chip:hover{background:var(--pink-l)}
