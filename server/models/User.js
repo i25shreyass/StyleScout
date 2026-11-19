@@ -9,6 +9,13 @@ const schema = new mongoose.Schema(
     country: { type: String, default: 'India' },
     currency: { type: String, default: 'INR' },
 
+    // "My size" picker (Sprint 4): e.g. { top: 'M', bottom: '32', shoe: 'UK 9' }
+    sizes: {
+      top: { type: String, default: '' },
+      bottom: { type: String, default: '' },
+      shoe: { type: String, default: '' },
+    },
+
     // Email verification. Only a SHA-256 hash of the emailed token is stored.
     emailVerified: { type: Boolean, default: false },
     verifyTokenHash: { type: String },

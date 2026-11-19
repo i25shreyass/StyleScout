@@ -29,10 +29,10 @@ export const forgotPasswordRequest = (body) => post('/api/auth/forgot-password',
 export const resetPasswordRequest = (body) => post('/api/auth/reset-password', body);
 
 // Live product search. Throws Error with .code (NO_KEY, QUOTA, NETWORK, ...) on failure.
-export async function searchRequest(q) {
+export async function searchRequest(q, { refresh = false } = {}) {
   let res;
   try {
-    res = await fetch(`${BASE}/api/search?q=${encodeURIComponent(q)}`);
+    res = await fetch(`${BASE}/api/search?q=${encodeURIComponent(q)}${refresh ? '&refresh=1' : ''}`);
   } catch {
     const e = new Error('Cannot reach the server.'); e.code = 'NETWORK'; throw e;
   }
@@ -82,4 +82,18 @@ export async function imageSearchRequest({ blob, url }) {
   if (!res.ok) { const e = new Error(data.message || `Photo search failed (${res.status})`); e.code = data.code; throw e; }
   if (!Array.isArray(data.results)) { const e = new Error('The search server sent an unexpected reply. Restart npm run dev.'); e.code = 'NETWORK'; throw e; }
   return data;
+}
+
+// "My size" saved to the account (only when logged in).
+export async function getSizesRequest(token) {
+  const res = await fetch(`${BASE}/api/profile/sizes`, { headers: { Authorization: `Bearer ${token}` } });
+  if (!res.ok) throw new Error('Could not load your sizes');
+  return res.json();
+}
+export async function saveSizesRequest(token, sizes) {
+  const res = await fetch(`${BASE}/api/profile/sizes`, {
+    method: 'PUT', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` }, body: JSON.stringify(sizes),
+  });
+  if (!res.ok) throw new Error('Could not save your sizes');
+  return res.json();
 }

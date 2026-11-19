@@ -44,7 +44,7 @@ r.use(rateLimit({
 // GET /api/search?q=black+cargo+pants
 r.get('/', async (req, res) => {
   try {
-    const out = await searchProducts(req.query.q);
+    const out = await searchProducts(req.query.q, { refresh: req.query.refresh === '1' });
     res.json(out);
   } catch (e) {
     if (e instanceof SearchError) return res.status(e.status).json({ message: e.message, code: e.code });

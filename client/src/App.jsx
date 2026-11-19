@@ -3,7 +3,7 @@ import { Routes, Route, Link, useNavigate, useParams, useSearchParams } from 're
 import { Trash2, Plus, Search, ChevronRight, Truck, Tag, Globe, Camera } from 'lucide-react';
 import { demoProducts, score } from './data';
 import Login from './pages/Login';
-import { searchRequest, readLinkRequest, looksLikeUrl, looksLikeImageUrl, imageSearchRequest, shrinkImage } from './services/api';
+import { searchRequest, readLinkRequest, looksLikeUrl, looksLikeImageUrl, imageSearchRequest, shrinkImage, getSizesRequest, saveSizesRequest } from './services/api';
 import VerifyEmail from './pages/VerifyEmail';
 import ResetPassword from './pages/ResetPassword';
 import { useAuth } from './context/AuthContext';
@@ -202,11 +202,73 @@ function matchInfo(p, source, query) {
   return { same, saving };
 }
 
+/* ---------- Sprint 4: my size, freshness ---------- */
+const SIZE_KEY = 'ss_sizes';
+const EMPTY_SIZES = { top: '', bottom: '', shoe: '' };
+const readSizes = () => { try { return { ...EMPTY_SIZES, ...JSON.parse(localStorage.getItem(SIZE_KEY) || '{}') }; } catch { return EMPTY_SIZES; } };
+// Saved in the browser always, and in the account when logged in.
+function useSizes() {
+  const { token } = useAuth();
+  const [sizes, setSizes] = useState(readSizes);
+  useEffect(() => {
+    if (!token) return undefined;
+    let dead = false;
+    getSizesRequest(token).then((s) => {
+      if (dead || !s) return;
+      const merged = { ...readSizes() };
+      for (const k of Object.keys(EMPTY_SIZES)) if (s[k]) merged[k] = s[k];
+      localStorage.setItem(SIZE_KEY, JSON.stringify(merged));
+      setSizes(merged);
+    }).catch(() => {});
+    return () => { dead = true; };
+  }, [token]);
+  const save = (next) => {
+    setSizes(next);
+    localStorage.setItem(SIZE_KEY, JSON.stringify(next));
+    if (token) saveSizesRequest(token, next).then(() => toast('size saved to your account ♡')).catch(() => toast('saved on this device only'));
+    else toast('size saved on this device. log in to keep it everywhere ♡');
+  };
+  return [sizes, save];
+}
+const SHOE_WORDS = /\b(shoe|shoes|sneaker|sneakers|sandal|sandals|heels?|boots?|loafers?|flats|slippers?|flip ?flops?|footwear|juttis?|mojaris?)\b/i;
+const BOTTOM_WORDS = /\b(jeans|pants?|trousers?|cargos?|joggers?|shorts|skirts?|leggings|palazzos?|chinos|track ?pants|salwar|sharara|bottoms?)\b/i;
+const sizeFor = (title, s) => (SHOE_WORDS.test(title) ? ['shoe', s.shoe] : BOTTOM_WORDS.test(title) ? ['bottom', s.bottom] : ['top', s.top]);
+const ago = (d) => {
+  const m = Math.max(0, Math.round((Date.now() - new Date(d).getTime()) / 60000));
+  if (m < 1) return 'just now';
+  if (m < 60) return `${m} min ago`;
+  const h = Math.round(m / 60);
+  return h < 24 ? `${h} h ago` : `${Math.round(h / 24)} d ago`;
+};
+const SIZE_OPTS = {
+  top: ['', 'XS', 'S', 'M', 'L', 'XL', 'XXL', '3XL'],
+  bottom: ['', '26', '28', '30', '32', '34', '36', '38', '40', 'XS', 'S', 'M', 'L', 'XL'],
+  shoe: ['', 'UK 3', 'UK 4', 'UK 5', 'UK 6', 'UK 7', 'UK 8', 'UK 9', 'UK 10', 'UK 11', 'UK 12'],
+};
+function SizePicker({ sizes, onSave }) {
+  const set = (k, v) => onSave({ ...sizes, [k]: v });
+  return (
+    <div className="sizepick">
+      <b>my size</b>
+      {[['top', 'tops'], ['bottom', 'bottoms'], ['shoe', 'shoes']].map(([k, label]) => (
+        <label key={k}><span>{label}</span>
+          <select value={sizes[k]} onChange={(e) => set(k, e.target.value)} aria-label={`my ${label} size`}>
+            {SIZE_OPTS[k].map((o) => <option key={o} value={o}>{o || '—'}</option>)}
+          </select>
+        </label>
+      ))}
+      <small>we remind you on every offer. stores don&apos;t share stock by size, so check it on the store page.</small>
+    </div>
+  );
+}
+
 // For photo results we can't compare words, only the price of the item the photo came from (if any).
 const photoMatch = (p, src) => ({ same: false, hideTag: true, saving: src?.price ? Math.round(src.price - (p.finalPrice ?? p.price)) : null });
 
-function LiveCard({ p, match }) {
-  const delivery = p.delivery === null ? null : p.delivery === 0 ? 'free delivery' : `+ ${money(p.delivery)} delivery`;
+function LiveCard({ p, match, avg, sizes, fetchedAt }) {
+  const eff = p.finalPrice ?? p.price;
+  const below = avg ? Math.round(avg - eff) : 0;
+  const [kind, mySize] = sizeFor(p.title, sizes || EMPTY_SIZES);
   return (
     <Window title={`${p.store.toLowerCase().replace(/\s+/g, '')}.jpg`} className="product" icon="◐">
       <a className="productpic" href={p.url || '#'} target="_blank" rel="noreferrer">
@@ -218,18 +280,31 @@ function LiveCard({ p, match }) {
       <div className="pbody">
         <b className="ptitle" title={p.title}>{p.title}</b>
         <div className="storeline"><strong>{p.store}</strong>{p.rating && <span>★ {p.rating}{p.reviews ? ` (${p.reviews})` : ''}</span>}</div>
-        <div className="price">
-          <strong>{money(p.price)}</strong>
+        {p.finalPrice !== null ? (
+          <div className="finalbig">
+            <small>you pay</small>
+            <strong>{money(p.finalPrice)}</strong>
+            <span>{money(p.price)} item {p.delivery === 0 ? '+ free delivery' : `+ ${money(p.delivery)} delivery`}</span>
+          </div>
+        ) : (
+          <div className="finalbig unknown" title="This store didn't share a delivery fee. The total may be higher at checkout.">
+            <small>item price</small>
+            <strong>{money(p.price)}</strong>
+            <span>+ delivery: check at store</span>
+          </div>
+        )}
+        <div className="price small">
           {p.originalPrice && <s>{money(p.originalPrice)}</s>}
           {p.discount > 0 && <mark>{p.discount}% OFF</mark>}
         </div>
-        {delivery ? (
-          <div className="finalline"><span>{delivery}</span><b>final {money(p.finalPrice)}</b></div>
-        ) : (
-          <div className="finalline unknown" title="This store didn't share a delivery fee. The total may be higher at checkout.">delivery: check at store</div>
-        )}
+        <div className="badges">
+          {below >= 50 && <span className="badge pink">{money(below)} below average</span>}
+          {p.lowestSeen && <span className="badge blue">lowest we&apos;ve seen</span>}
+          {p.droppedBy > 0 && <span className="badge green">dropped {money(p.droppedBy)}</span>}
+        </div>
         {match?.saving > 0 && <small className="saving">₹{match.saving.toLocaleString('en-IN')} cheaper than {match.hideTag ? 'your item' : 'your link'}</small>}
-        {p.belowTypical > 0 && <small>{p.belowTypical}% below the typical price here</small>}
+        <small className="sizeline">{mySize ? <>your size: <b>{mySize}</b> · select it at the store</> : <>set your {kind} size in filters for reminders</>}</small>
+        {fetchedAt && <small className="checked">checked {ago(fetchedAt)}</small>}
         {p.secondHand && <small className="tagline2">pre-owned</small>}
         {p.url
           ? <a className="btn block" href={p.url} target="_blank" rel="noreferrer">view at store ↗</a>
@@ -249,6 +324,9 @@ function SearchPage() {
   const [onlySame, setOnlySame] = useState(false);
   const [photo, setPhoto] = useState(null);       // { preview, source } when a photo search is on screen
   const photoRef = useRef(false);
+  const [photoUrl, setPhotoUrl] = useState('');
+  const [mySizes, saveSizes] = useSizes();
+  const [manualPrice, setManualPrice] = useState('');
   const fileRef = useRef(null);
   const source = useMemo(() => (urlQ ? readLinkSource(urlQ) : null), [urlQ]);
 
@@ -260,7 +338,7 @@ function SearchPage() {
     let dead = false;
     setLink({ loading: true });
     readLinkRequest(linkParam)
-      .then((d) => { if (dead) return; setLink(d); setLinkQuery(d.query); })
+      .then((d) => { if (dead) return; setLink(d); setLinkQuery(d.query); setManualPrice(''); })
       .catch((e) => { if (!dead) setLink({ error: e.message }); });
     return () => { dead = true; };
   }, [linkParam]);
@@ -269,13 +347,22 @@ function SearchPage() {
     e?.preventDefault();
     const q = linkQuery.trim();
     if (!q) return;
-    sessionStorage.setItem(LINK_KEY, JSON.stringify({ query: normQ(q), source: link.source }));
+    const typed = Number(String(manualPrice).replace(/[^\d.]/g, ''));
+    const src = !link.source.price && typed > 0 ? { ...link.source, price: Math.round(typed), priceTyped: true } : link.source;
+    sessionStorage.setItem(LINK_KEY, JSON.stringify({ query: normQ(q), source: src }));
     setParams({ q });
   };
   const [live, setLive] = useState(null);      // { results, cached, fetchedAt }
   const [loading, setLoading] = useState(false);
   const [notice, setNotice] = useState('');    // shown when we fall back to demo data
   const [error, setError] = useState('');
+  const [refreshing, setRefreshing] = useState(false);
+  const refreshPrices = async () => {
+    setRefreshing(true);
+    try { setLive(await searchRequest(urlQ, { refresh: true })); toast('prices refreshed ✦'); }
+    catch (e) { toast(e.message); }
+    finally { setRefreshing(false); }
+  };
 
   // Photo search: an uploaded photo, or a link to a photo. Uses 1 live search.
   const runPhoto = async ({ file, url, source }) => {
@@ -354,6 +441,12 @@ function SearchPage() {
   const liveMax = liveMode && live.results.length ? Math.ceil(Math.max(...live.results.map((p) => p.price)) / 50) * 50 : 0;
   const liveStores = liveMode ? ['all', ...new Set(live.results.map((p) => p.store))] : [];
 
+  const liveAvg = useMemo(() => {
+    if (!liveMode || !live.results.length) return 0;
+    const v = live.results.map((p) => p.finalPrice ?? p.price).sort((a, b) => a - b);
+    return v[Math.floor(v.length / 2)];
+  }, [live, liveMode]);
+
   const liveShown = useMemo(() => {
     if (!liveMode) return [];
     const capV = liveCap ?? liveMax;
@@ -394,7 +487,7 @@ function SearchPage() {
             <input type="range" min="0" max={liveMax} step="50" value={liveCap ?? liveMax} onChange={(e) => setLiveCap(Number(e.target.value))} />
             <label className="check2"><input type="checkbox" checked={knownDelivery} onChange={(e) => setKnownDelivery(e.target.checked)} /> only show known delivery cost</label>
             {source && <label className="check2"><input type="checkbox" checked={onlySame} onChange={(e) => setOnlySame(e.target.checked)} /> only “likely same item”</label>}
-            <p className="filternote">size &amp; colour matching for live results is coming next. pick your size on the store page.</p>
+            <SizePicker sizes={mySizes} onSave={saveSizes} />
             <button className="btn block" onClick={() => { setStore('all'); setLiveCap(null); setKnownDelivery(false); }}>reset</button>
           </Window>
         ) : (
@@ -407,7 +500,9 @@ function SearchPage() {
                 <h2>{urlQ ? `results for “${urlQ}”` : photo ? 'look-alikes for your photo' : linkParam ? 'scouting your link' : 'featured picks'}</h2>
                 <small>
                   {linkParam && !urlQ ? 'check the search words, then scout' : loading ? 'scouting stores…' : `${count} ${liveMode ? 'live offers' : 'demo products'}`}
-                  {liveMode && !loading && ` · checked ${checked}${live.cached ? ' (saved)' : ''}`}
+                  {liveMode && !loading && ` · checked ${checked}${live.cached ? ' (saved, free)' : ''}`}
+                  {liveMode && !loading && live.usedToday != null && ` · ${live.usedToday} live searches today`}
+                  {liveMode && !loading && live.canRefresh && urlQ && <button type="button" className="btn tiny blue refreshbtn" disabled={refreshing} onClick={refreshPrices}>{refreshing ? 'refreshing…' : 'refresh prices (1 search)'}</button>}
                 </small>
               </div>
               <form className="searchmini" onSubmit={submit}>
@@ -435,7 +530,11 @@ function SearchPage() {
                   <div className="linkinfo">
                     <small>your item from <b>{link.source.store}</b>{link.source.readFrom === 'link' && ' (read from the link)'}</small>
                     <b className="ptitle">{link.source.title}</b>
-                    <span>{link.source.price ? money(link.source.price) : 'price not readable from this store'}</span>
+                    {link.source.price ? <span>{money(link.source.price)}</span> : (
+                      <label className="lg-field"><span>this store hides its price. type the price you see (optional)</span>
+                        <input inputMode="numeric" value={manualPrice} onChange={(e) => setManualPrice(e.target.value)} placeholder="e.g. 1299" aria-label="price on the store page" />
+                      </label>
+                    )}
                     <label className="lg-field"><span>we&apos;ll search for</span>
                       <input value={linkQuery} onChange={(e) => setLinkQuery(e.target.value)} aria-label="search words" />
                     </label>
@@ -457,7 +556,7 @@ function SearchPage() {
                 <div>
                   <small>your link · {source.store}</small>
                   <b>{source.title}</b>
-                  <span>{source.price ? money(source.price) : 'price not readable'}</span>
+                  <span>{source.price ? <>{money(source.price)}{source.priceTyped && ' (you typed)'}</> : 'price not readable'}</span>
                 </div>
                 <div className="verdict">{!source.price ? 'compare the offers below ↓'
                   : best < source.price ? <>best offer is <b>{money(source.price - best)} cheaper</b> at {bestP?.store}</>
@@ -494,7 +593,11 @@ function SearchPage() {
                 <div className="photodrop" onDragOver={(e) => e.preventDefault()} onDrop={(e) => { e.preventDefault(); pickFile(e.dataTransfer.files?.[0]); }}>
                   <p><b>search by photo</b><br />drop a picture of an outfit here, or choose one. we find look-alikes and compare prices (uses 1 live search).</p>
                   <button type="button" className="btn" onClick={() => fileRef.current?.click()}>choose a photo</button>
-                  <small>tip: a clear photo with the item in the middle works best. you can also paste a link to a photo in the search box.</small>
+                  <form className="photolink" onSubmit={(e) => { e.preventDefault(); const u = photoUrl.trim(); if (/^https?:\/\/\S+$/i.test(u)) runPhoto({ url: u }); else setError('Paste a full photo link starting with https://'); }}>
+                    <input value={photoUrl} onChange={(e) => setPhotoUrl(e.target.value)} placeholder="or paste a link to a photo (https://…)" aria-label="link to a photo" />
+                    <button className="btn blue" type="submit">find look-alikes</button>
+                  </form>
+                  <small>tip: a clear photo with the item in the middle works best. on a store page, right-click the picture and choose “copy image address”.</small>
                 </div>
               </Window>
             </>
@@ -503,7 +606,7 @@ function SearchPage() {
           {linkParam && !urlQ ? null : loading ? (
             <div className="products">{[0, 1, 2, 3, 4, 5].map((i) => <div key={i} className="skeleton" />)}</div>
           ) : liveMode ? (
-            <div className="products">{liveShown.map((p) => <LiveCard key={p.id} p={p} match={photo ? photoMatch(p, photo.source) : matchInfo(p, source, live.query)} />)}</div>
+            <div className="products">{liveShown.map((p) => <LiveCard key={p.id} p={p} avg={liveAvg} sizes={mySizes} fetchedAt={live.fetchedAt} match={photo ? photoMatch(p, photo.source) : matchInfo(p, source, live.query)} />)}</div>
           ) : photo ? null : (
             <div className="products">{demoShown.map((p) => <ProductCard key={p.id} p={p} />)}</div>
           )}
@@ -517,7 +620,7 @@ function SearchPage() {
             </div>
           )}
           {liveMode && !loading && count > 0 && (
-            <p className="disclaimer">prices come from Google Shopping listings for India and can change at the store. “final” = item + delivery where the store lists it; coupons and card offers aren&apos;t included yet.</p>
+            <p className="disclaimer">prices come from Google Shopping listings for India and can change at the store. “you pay” = item + delivery where the store lists it. coupons and card offers aren&apos;t included. “lowest we&apos;ve seen” compares with earlier StyleScout searches.</p>
           )}
         </div>
       </div>

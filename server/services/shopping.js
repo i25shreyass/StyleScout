@@ -22,12 +22,18 @@ export class SearchError extends Error {
 export const normalise = (q) => String(q || '').toLowerCase().replace(/[^\p{L}\p{N}\s-]/gu, ' ').replace(/\s+/g, ' ').trim();
 
 // "Free delivery" -> 0, "₹40 delivery" -> 40, anything else -> null (unknown)
-export function parseDelivery(text) {
+// "Free delivery above ₹499" -> 0 if the item costs ₹499+, otherwise unknown.
+export function parseDelivery(text, price = 0) {
   if (!text) return null;
-  const t = String(text).toLowerCase();
-  if (t.includes('free')) return 0;
-  const m = t.replace(/,/g, '').match(/(?:₹|rs\.?|inr)\s*(\d+(?:\.\d+)?)/);
-  return m ? Math.round(Number(m[1])) : null;
+  const t = String(text).toLowerCase().replace(/,/g, '');
+  const amount = (s) => { const m = s.match(/(?:₹|rs\.?|inr)\s*(\d+(?:\.\d+)?)/); return m ? Math.round(Number(m[1])) : null; };
+  if (t.includes('free')) {
+    const over = t.match(/(?:above|over|on orders? (?:above|over|of)|orders? over|min(?:imum)?(?: order)?(?: of)?)\s*((?:₹|rs\.?|inr)\s*\d+(?:\.\d+)?)/);
+    if (over) { const min = amount(over[1]); return min !== null && price >= min ? 0 : null; }
+    return 0;
+  }
+  if (/deliver|shipping|ship/.test(t) || /^\s*\+?\s*(₹|rs|inr)/.test(t)) return amount(t);
+  return null;
 }
 
 const toNumber = (v) => {
@@ -41,8 +47,9 @@ function mapResult(r, i) {
   const price = toNumber(r.extracted_price ?? r.price);
   if (!price) return null;
   const originalPrice = toNumber(r.extracted_old_price ?? r.old_price);
-  const deliveryText = r.delivery || (Array.isArray(r.extensions) ? r.extensions.find((e) => /deliver|shipping/i.test(e)) : '') || '';
-  const delivery = parseDelivery(deliveryText);
+  const ext = [r.delivery, ...(Array.isArray(r.extensions) ? r.extensions : []), r.shipping].filter(Boolean).map(String);
+  const deliveryText = ext.find((e) => /deliver|shipping/i.test(e)) || '';
+  const delivery = parseDelivery(deliveryText, price);
   const store = r.source || 'Unknown store';
   return {
     id: r.product_id ? `g-${r.product_id}` : `r-${i}-${normalise(r.title).slice(0, 40)}`,
@@ -128,14 +135,51 @@ async function writeCache(key, query, results) {
   }
 }
 
+// Adds price-history badges from saved snapshots (free: database only).
+// lowestSeen = cheaper than every earlier sighting; droppedBy = ₹ cheaper than the last sighting.
+async function addHistory(results, fetchedAt) {
+  if (!dbReady() || !results.length) return results;
+  const before = new Date(new Date(fetchedAt).getTime() - 60_000);
+  try {
+    const rows = await PriceSnapshot.aggregate([
+      { $match: { productKey: { $in: results.map((p) => p.id) }, at: { $lt: before } } },
+      { $sort: { at: 1 } },
+      { $group: { _id: '$productKey', min: { $min: '$price' }, last: { $last: '$price' }, seen: { $sum: 1 } } },
+    ]);
+    const h = new Map(rows.map((x) => [x._id, x]));
+    return results.map((p) => {
+      const x = h.get(p.id);
+      if (!x) return { ...p, seenBefore: 0 };
+      return { ...p, seenBefore: x.seen, lowestSeen: p.price < x.min, droppedBy: x.last > p.price ? Math.round(x.last - p.price) : 0 };
+    });
+  } catch (e) {
+    console.warn('Price history lookup failed:', e.message);
+    return results;
+  }
+}
+
+// Live searches used today (India time), counted from fresh cache writes.
+export async function searchesToday() {
+  if (!dbReady()) return null;
+  const now = new Date();
+  const ist = new Date(now.getTime() + 5.5 * 3_600_000);
+  const start = new Date(Date.UTC(ist.getUTCFullYear(), ist.getUTCMonth(), ist.getUTCDate()) - 5.5 * 3_600_000);
+  return SearchCache.countDocuments({ fetchedAt: { $gte: start } });
+}
+
+const REFRESH_AFTER_H = 6;
+const canRefresh = (fetchedAt) => Date.now() - new Date(fetchedAt).getTime() > REFRESH_AFTER_H * 3_600_000;
+
 // Main entry: text query -> ranked results. Returns { query, results, cached, fetchedAt }.
-export async function searchProducts(rawQuery) {
+export async function searchProducts(rawQuery, { refresh = false } = {}) {
   const query = normalise(rawQuery);
   if (query.length < 2) throw new SearchError('Type at least 2 characters to search.', 400, 'SHORT');
   const key = `text:${query}`;
 
   const cached = await readCache(key);
-  if (cached) return { query, results: cached.results, cached: true, fetchedAt: cached.fetchedAt };
+  if (cached && !(refresh && canRefresh(cached.fetchedAt))) {
+    return { query, results: await addHistory(cached.results, cached.fetchedAt), cached: true, fetchedAt: cached.fetchedAt, canRefresh: canRefresh(cached.fetchedAt), usedToday: await searchesToday() };
+  }
 
   const data = await callSerpApi({
     engine: 'google_shopping',
@@ -147,8 +191,10 @@ export async function searchProducts(rawQuery) {
   });
   const rows = Array.isArray(data.shopping_results) ? data.shopping_results : [];
   const results = scoreResults(rows.map(mapResult).filter(Boolean)).slice(0, LIMIT());
+  const fetchedAt = new Date();
+  const withHistory = await addHistory(results, fetchedAt);  // compare before saving today's prices
   await writeCache(key, query, results);
-  return { query, results, cached: false, fetchedAt: new Date() };
+  return { query, results: withHistory, cached: false, fetchedAt, canRefresh: false, usedToday: await searchesToday() };
 }
 
 // ---------- Image search (Google Lens through SerpApi) ----------
@@ -184,7 +230,7 @@ function mapLensResult(m, i) {
 // cacheKey identifies the photo (hash), getImageUrl() is only called on a cache miss.
 export async function searchByImage({ cacheKey, getImageUrl }) {
   const cached = await readCache(cacheKey);
-  if (cached) return { query: 'photo', results: cached.results, cached: true, fetchedAt: cached.fetchedAt };
+  if (cached) return { query: 'photo', results: await addHistory(cached.results, cached.fetchedAt), cached: true, fetchedAt: cached.fetchedAt, usedToday: await searchesToday() };
 
   const data = await callSerpApi({
     engine: 'google_lens',
@@ -196,6 +242,8 @@ export async function searchByImage({ cacheKey, getImageUrl }) {
   const seen = new Set();
   const mapped = rows.map(mapLensResult).filter(Boolean).filter((p) => (seen.has(p.id) ? false : seen.add(p.id)));
   const results = scoreResults(mapped).slice(0, LIMIT());
+  const fetchedAt = new Date();
+  const withHistory = await addHistory(results, fetchedAt);
   await writeCache(cacheKey, 'photo', results);
-  return { query: 'photo', results, cached: false, fetchedAt: new Date() };
+  return { query: 'photo', results: withHistory, cached: false, fetchedAt, usedToday: await searchesToday() };
 }
