@@ -258,19 +258,15 @@ const OFFER_HOURS = 24;
 
 // Newer SerpApi lookup (immersive product, needs the token from the search result),
 // with the older google_product lookup as a fallback.
-export const storeDebug = {};
 async function fetchSellers(productId, token) {
   let rows = [];
-  storeDebug.calls = [];
   if (token) {
     const data = await callSerpApi({ engine: 'google_immersive_product', page_token: token, gl: 'in', hl: 'en' });
     rows = data.product_results?.stores || data.stores || [];
-    storeDebug.calls.push({ engine: 'immersive', keys: Object.keys(data), prKeys: Object.keys(data.product_results || {}), err: data.error, rows: rows.length, sample: rows[0] });
   }
   if (!rows.length && productId) {
     const data = await callSerpApi({ engine: 'google_product', product_id: productId, gl: 'in', hl: 'en', google_domain: 'google.co.in' });
     rows = data.sellers_results?.online_sellers || data.online_sellers || [];
-    storeDebug.calls.push({ engine: 'product', keys: Object.keys(data), err: data.error, rows: rows.length });
   }
   return rows
     .map((r) => ({
