@@ -73,6 +73,37 @@ function Landing() {
   );
 }
 
+/* ---------- merge repeats: the same product from several stores becomes one card ---------- */
+// Two offers count as the same item when they share the same photo, or the same brand + main product words.
+const imgKey = (u) => String(u || '').replace(/[?&](w|h|s|sz|size|width|height)=[^&]*/gi, '').replace(/=w\d+-h\d+.*$/, '').slice(0, 160);
+const nameKey = (t) => String(t || '').toLowerCase()
+  .replace(/\(.*?\)|\[.*?\]|at nykaa\w*|at myntra|\bfor (men|women|boys|girls)\b|\b(xs|s|m|l|xl|xxl|\d?xl|size \w+)\b|[-|,:–]/g, ' ')
+  .replace(/[^a-z0-9 ]/g, ' ').split(/\s+/).filter((w) => w.length > 1 && !['men', 'mens', 'women', 'womens', 'the', 'and', 'with', 'new'].includes(w))
+  .slice(0, 7).join(' ');
+function dedupeOffers(list) {
+  const out = []; const byImg = new Map(); const byName = new Map();
+  for (const p of list || []) {
+    const ik = p.image ? imgKey(p.image) : null;
+    const nk = nameKey(p.title);
+    const hit = (ik && byImg.get(ik)) || (nk.split(' ').length >= 3 && byName.get(nk));
+    if (hit) {
+      const pay = (x) => x.finalPrice ?? x.price;
+      const stores = new Set([...(hit.alsoAt || []), hit.store, p.store]);
+      if (pay(p) < pay(hit)) {                       // keep the cheaper offer as the card
+        Object.assign(hit, { ...p, alsoAt: [...stores].filter((x) => x !== p.store) });
+      } else {
+        hit.alsoAt = [...stores].filter((x) => x !== hit.store);
+      }
+      continue;
+    }
+    const card = { ...p, alsoAt: [] };
+    out.push(card);
+    if (ik) byImg.set(ik, card);
+    if (nk) byName.set(nk, card);
+  }
+  return out;
+}
+
 /* ---------- who an item is for (from its title) ---------- */
 function audienceOf(title) {
   const t = String(title || '').toLowerCase();
@@ -185,7 +216,7 @@ function FeaturedBrowser({ start = 'all', perPage = 12, filter = null, onItems }
   // decision-tree ordering from the Style Passport (guests get a daily-changing mix)
   const plan = personalise(data.categories, passport);
   const cats = plan.cats;
-  const catItems = cat === 'all' ? plan.everything : (cats.find((c) => c.key === cat)?.items || []);
+  const catItems = dedupeOffers(cat === 'all' ? plan.everything : (cats.find((c) => c.key === cat)?.items || []));
   const items = catItems.filter((p) => browseMatch(p, filter));
   return (
     <div className="featured">
@@ -750,6 +781,7 @@ function LiveCard({ p, match, avg, sizes, fetchedAt, query = '', fit, onImageSea
         {p.url
           ? <StoreButton p={p} />
           : <span className="btn block blue">link unavailable</span>}
+        {p.alsoAt?.length > 0 && <small className="alsoat">+{p.alsoAt.length} more store{p.alsoAt.length > 1 ? 's' : ''}: {p.alsoAt.slice(0, 2).join(', ')}{p.alsoAt.length > 2 ? '…' : ''}</small>}
         <StoresButton p={p} mySize={mySize} kind={kind} />
         <CompareButton product={{ ...p, url: storeHref(p) || p.url }} />
         {p.id && <Link className="btn block blue" to={`/history/${encodeURIComponent(p.id)}`}>price history ★</Link>}
@@ -972,7 +1004,7 @@ function SearchPage() {
     const capV = liveCap ?? Infinity;
     const minV = liveMin ?? 0;
     const eff = (p) => p.finalPrice ?? p.price;
-    return live.results
+    return dedupeOffers(live.results)
       .filter((p) => (store === 'all' || p.store === store) && p.price <= capV && (!knownDelivery || p.delivery !== null) && (!onlySame || matchInfo(p, source, live.query)?.same)
         && p.price >= minV && (liveColour === 'all' || colourOf(p.title) === liveColour) && (liveAud === 'all' || audienceOf(p.title) === liveAud || (liveAud !== 'kids' && audienceOf(p.title) === 'unisex'))
         && (brand === 'all' || brandOf(p.title) === brand) && (condition === 'all' || (condition === 'pre-owned') === Boolean(p.secondHand)) && (p.discount || 0) >= minDisc)

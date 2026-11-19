@@ -1359,3 +1359,5 @@ body::before{filter:none;will-change:transform}
 .storespop .headinfo b{font-size:20px;line-height:1.25}
 .storespop .srow{font-size:14px;padding:11px 14px}
 @media(max-width:700px){.storespop{padding:0}.storespop>.win{width:100vw;max-height:100vh;height:100vh;border-radius:0}.storespop .storeshead .gallery,.storespop .storeshead .gallery>img{width:100%}}
+
+.alsoat{display:block;font-size:12px;font-weight:700;color:#5a4790}
