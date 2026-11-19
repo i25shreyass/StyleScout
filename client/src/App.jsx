@@ -35,6 +35,16 @@ const Page = ({ children, className = '' }) => (
   </>
 );
 
+// Adds the site menu, ticker and footer around pages that bring their own <main>.
+const WithNav = ({ children }) => (
+  <>
+    <TopNav />
+    {children}
+    <Ticker />
+    <Footer />
+  </>
+);
+
 /* ---------- landing ---------- */
 function Landing() {
   const nav = useNavigate();
@@ -401,7 +411,7 @@ function LiveCard({ p, match, avg, sizes, fetchedAt, query = '' }) {
         {p.url
           ? <StoreButton p={p} />
           : <span className="btn block blue">link unavailable</span>}
-        <CompareButton product={p} />
+        <CompareButton product={{ ...p, url: storeHref(p) || p.url }} />
         {p.id && <Link className="btn block blue" to={`/history/${encodeURIComponent(p.id)}`}>price history ★</Link>}
       </div>
     </Window>
@@ -886,8 +896,8 @@ export default function App() {
         <Route path="/home" element={<Home />} />
         <Route path="/search" element={<SearchPage />} />
         <Route path="/product/:id" element={<ProductDetails />} />
-        <Route path="/compare" element={<ComparePage />} />
-        <Route path="/history/:productKey" element={<ProductHistory />} />
+        <Route path="/compare" element={<WithNav><ComparePage /></WithNav>} />
+        <Route path="/history/:productKey" element={<WithNav><ProductHistory /></WithNav>} />
         <Route path="/wishlist" element={<WishlistPage />} />
         <Route path="/alerts" element={<Alerts />} />
         <Route path="/profile" element={<Profile />} />
