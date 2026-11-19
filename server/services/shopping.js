@@ -258,17 +258,42 @@ const OFFER_HOURS = 24;
 
 // Newer SerpApi lookup (immersive product, needs the token from the search result),
 // with the older google_product lookup as a fallback.
+// Product facts from the same Google product page (free: same search as the store list).
+function mapProduct(pr) {
+  const text = (v) => (typeof v === 'string' ? v : v?.text || v?.title || v?.name || '');
+  const about = pr.about_the_product || pr.about || {};
+  const list = (v) => [].concat(v || []).map(text).map((s) => String(s).trim()).filter(Boolean);
+  const sizes = list(pr.sizes || pr.size_options || (pr.variants || []).filter((v) => /size/i.test(v?.title || v?.name || '')).flatMap((v) => v.items || v.options || []));
+  const colours = list(pr.colors || pr.colours || (pr.variants || []).filter((v) => /colou?r/i.test(v?.title || v?.name || '')).flatMap((v) => v.items || v.options || []));
+  return {
+    title: text(pr.title) || null,
+    brand: text(pr.brand) || null,
+    images: list(pr.thumbnails || pr.media?.map?.((m) => m.link || m.thumbnail)).slice(0, 6),
+    description: String(text(about.description) || text(pr.description) || '').slice(0, 600) || null,
+    features: list(about.features || pr.features || pr.highlights).slice(0, 6),
+    sizes: sizes.slice(0, 20),
+    colours: colours.slice(0, 12),
+    rating: toNumber(pr.rating) || null,
+    reviews: toNumber(pr.reviews) || null,
+    similar: [].concat(pr.more_options || []).slice(0, 6).map((m) => ({
+      title: m.title, image: m.thumbnail || null, price: toNumber(m.extracted_price ?? m.price), rating: toNumber(m.rating) || null, reviews: toNumber(m.reviews) || null,
+    })).filter((m) => m.title),
+  };
+}
+
 async function fetchSellers(productId, token) {
   let rows = [];
+  let product = null;
   if (token) {
     const data = await callSerpApi({ engine: 'google_immersive_product', page_token: token, gl: 'in', hl: 'en' });
     rows = data.product_results?.stores || data.stores || [];
+    product = mapProduct(data.product_results || {});
   }
   if (!rows.length && productId) {
     const data = await callSerpApi({ engine: 'google_product', product_id: productId, gl: 'in', hl: 'en', google_domain: 'google.co.in' });
     rows = data.sellers_results?.online_sellers || data.online_sellers || [];
   }
-  return rows.map(mapSeller).filter((r) => r && r.store && r.url && /^https?:\/\//.test(r.url));
+  return { sellers: rows.map(mapSeller).filter((r) => r && r.store && r.url && /^https?:\/\//.test(r.url)), product };
 }
 
 // One seller row -> what the "all stores" panel needs. Tolerant of field-name differences.
@@ -285,6 +310,7 @@ function mapSeller(r) {
   const originalPrice = toNumber(r.extracted_original_price ?? r.original_price);
   return {
     store: String(r.name || r.seller || r.source || '').trim(),
+    listingTitle: r.title ? String(r.title).slice(0, 200) : null,   // the store's own name for the item
     url: r.direct_link || r.link || null,
     price,
     originalPrice: originalPrice && originalPrice > price ? originalPrice : null,
@@ -306,16 +332,17 @@ export async function getSellers({ productId, token }) {
   const cacheId = sellerCacheId(productId, token);
   if (dbReady()) {
     const hit = await OfferCache.findOne({ productId: cacheId }).lean();
-    if (hit?.v === 2 && hit.sellers?.length && Date.now() - new Date(hit.fetchedAt).getTime() < OFFER_HOURS * 3_600_000) {
-      return { sellers: hit.sellers, cached: true, fetchedAt: hit.fetchedAt };
+    if (hit?.v >= 2 && hit.sellers?.length && Date.now() - new Date(hit.fetchedAt).getTime() < OFFER_HOURS * 3_600_000) {
+      return { sellers: hit.sellers, product: hit.product || null, cached: true, fetchedAt: hit.fetchedAt };
     }
   }
-  const sellers = (await fetchSellers(productId, token)).filter((s) => !/^https?:\/\/(www\.)?google\./i.test(s.url));
+  const got = await fetchSellers(productId, token);
+  const sellers = got.sellers.filter((s) => !/^https?:\/\/(www\.)?google\./i.test(s.url));
   const fetchedAt = new Date();
   if (dbReady() && sellers.length) {   // never save an empty answer
-    await OfferCache.updateOne({ productId: cacheId }, { productId: cacheId, v: 2, sellers, fetchedAt }, { upsert: true });
+    await OfferCache.updateOne({ productId: cacheId }, { productId: cacheId, v: 3, sellers, product: got.product, fetchedAt }, { upsert: true });
   }
-  return { sellers, cached: false, fetchedAt };
+  return { sellers, product: got.product, cached: false, fetchedAt };
 }
 
 // Returns the direct store URL for one store of one product, or null if not found.

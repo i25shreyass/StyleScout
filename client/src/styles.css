@@ -887,3 +887,41 @@ tbody tr:hover{background:var(--pink-l)}
 .histlist .x{width:28px;height:28px;border:2px solid var(--line);background:#fff;font-weight:800;cursor:pointer}
 .histlist .x:hover{background:var(--pink)}
 @media(max-width:800px){.profpage{grid-template-columns:1fr}.pf.site .pf-checks{grid-template-columns:1fr 1fr}}
+
+/* ---- Sprint 8: product details, trust, sections ---- */
+.storeshead{align-items:flex-start}
+.storeshead .gallery{display:grid;gap:6px;width:150px;flex:none}
+.storeshead .gallery>img{width:150px;height:170px;object-fit:cover;border:2px solid var(--line);background:#fff}
+.storeshead .thumbs{display:flex;gap:4px;flex-wrap:wrap}
+.storeshead .thumbs button{padding:0;border:2px solid var(--lav);background:#fff;cursor:pointer}
+.storeshead .thumbs button.on{border-color:var(--pink-d)}
+.storeshead .thumbs img{width:30px;height:30px;object-fit:cover;display:block}
+.storeshead .headinfo{display:grid;gap:4px}
+.brandtag{justify-self:start;font-weight:800;text-transform:uppercase;letter-spacing:.06em;font-size:11px;padding:2px 6px;border:2px solid var(--line);background:var(--yellow)}
+.storeshead .why{opacity:.6;font-size:11px}
+.warnname{color:#b0457a;font-weight:700;opacity:1!important}
+.sizelist{display:flex!important;flex-wrap:wrap;gap:3px;margin-top:4px;opacity:1!important}
+.sizelist i{font-style:normal;font-size:10px;font-weight:700;padding:1px 5px;border:1.5px solid var(--line);background:#d8f7dd}
+.sizelist i.out{background:#fff;opacity:.45;text-decoration:line-through}
+.proddetails{margin-top:12px;padding:10px 12px;border:2px solid var(--line);background:#fff;display:grid;gap:6px}
+.proddetails p{margin:0;font-size:13px;line-height:1.5}
+.proddetails ul{margin:0;padding-left:18px;font-size:13px}
+.proddetails .facts{display:flex;flex-wrap:wrap;gap:8px}
+.proddetails .facts span{font-size:12px;padding:4px 8px;border:1.5px solid var(--lav);background:var(--lav-l)}
+.proddetails .facts em{font-style:normal;font-weight:800;margin-right:5px}
+.proddetails small{opacity:.6;font-size:11px}
+.similarrow{margin-top:12px;display:grid;gap:6px}
+.similarrow>div{display:flex;gap:8px;overflow-x:auto;padding-bottom:4px}
+.simcard{flex:none;width:130px;display:grid;gap:4px;padding:6px;border:2px solid var(--line);background:#fff;color:var(--ink);text-decoration:none;font-size:11px}
+.simcard:hover{background:var(--pink-l)}
+.simcard img{width:100%;height:110px;object-fit:cover}
+.simcard span{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.storesfoot{display:flex;flex-wrap:wrap;justify-content:space-between;align-items:center;gap:8px;margin-top:10px}
+.storesfoot .disclaimer{margin:0}
+.linkbtn{border:0;background:none;padding:0;font:inherit;font-size:12px;font-weight:700;color:var(--pink-d);text-decoration:underline;cursor:pointer}
+.reportbox{display:flex;flex-wrap:wrap;gap:6px;align-items:center;font-size:12px}
+.reportbox select,.reportbox input{height:30px;border:2px solid var(--line);padding:0 6px;font:inherit;font-size:12px;background:#fff}
+.reportdone{margin:0;font-size:12px;font-weight:700;color:#2f6b45}
+.sectionhead{margin:6px 0 -6px;font-size:18px;display:flex;align-items:baseline;gap:10px;flex-wrap:wrap}
+.sectionhead small{font-size:12px;font-weight:500;opacity:.7}
+@media(max-width:600px){.storeshead{flex-direction:column}.storeshead .gallery{width:100%}.storeshead .gallery>img{width:100%;height:220px}}

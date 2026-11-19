@@ -20,6 +20,19 @@ export function normSize(s) {
   return t.replace(/\s/g, '');
 }
 
+// Description, colours and material from Shopify product data (all public).
+const stripHtml = (h) => String(h || '').replace(/<style[\s\S]*?<\/style>/gi, ' ').replace(/<[^>]+>/g, ' ').replace(/&nbsp;/g, ' ').replace(/&amp;/g, '&').replace(/\s+/g, ' ').trim();
+function shopifyDetails(product) {
+  const opts = (product.options || []).map((o) => (typeof o === 'string' ? { name: o } : o));
+  const ci = opts.findIndex((o) => /colou?r/i.test(o.name || ''));
+  const colours = ci >= 0 ? [...new Set((product.variants || []).map((v) => v[`option${ci + 1}`]).filter(Boolean))] : [];
+  const text = stripHtml(product.description || product.body_html);
+  // only a clear composition ("60% cotton, 40% polyester") or a labelled line ("Fabric: Cotton")
+  const material = text.match(/\d{1,3}\s*%\s*[a-z]+(?:\s*[,&/+]\s*\d{1,3}\s*%\s*[a-z]+)*/i)?.[0]
+    || text.match(/\b(?:fabric|material|composition)\s*[:\-–]\s*([a-z0-9 %,&/-]{3,40})/i)?.[1]?.trim() || null;
+  return { description: text.slice(0, 500) || null, colours: colours.slice(0, 12), material, type: product.type || null, vendor: product.vendor || null };
+}
+
 const SIZE_OPTION = /^(size|sizes|shoe size|waist|waist size|uk size|us size|fit size)$/i;
 
 function fromShopify(product) {
@@ -82,12 +95,12 @@ export async function readSizes(rawUrl) {
   const hit = cache.get(key);
   if (hit && Date.now() - hit.at < CACHE_MIN * 60_000) return hit.data;
 
-  let sizes = null; let source = null;
+  let sizes = null; let source = null; let details = null;
   try {
     const handle = shopifyHandle(u);
     if (handle) {
       const r = await fetchPage(new URL(`/products/${handle}.js`, u.origin), { json: true });
-      if (r.html) { try { sizes = fromShopify(JSON.parse(r.html)); source = sizes ? 'store data' : null; } catch { /* not Shopify */ } }
+      if (r.html) { try { const prod = JSON.parse(r.html); sizes = fromShopify(prod); details = shopifyDetails(prod); source = sizes ? 'store data' : null; } catch { /* not Shopify */ } }
     }
     if (!sizes) {
       const r = await fetchPage(new URL(u.href));
@@ -98,7 +111,7 @@ export async function readSizes(rawUrl) {
     return { status: 'unknown', reason: 'store page could not be read', sizes: [] };
   }
   const data = sizes?.length
-    ? { status: 'ok', source, store: u.hostname.replace(/^www\./, ''), sizes, checkedAt: new Date() }
+    ? { status: 'ok', source, store: u.hostname.replace(/^www\./, ''), sizes, details, checkedAt: new Date() }
     : { status: 'unknown', reason: 'this store does not share size stock', sizes: [] };
   cache.set(key, { at: Date.now(), data });
   if (cache.size > 500) cache.delete(cache.keys().next().value);

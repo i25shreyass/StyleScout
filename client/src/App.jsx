@@ -3,7 +3,7 @@ import { Routes, Route, Link, useNavigate, useParams, useSearchParams } from 're
 import { Trash2, Plus, Search, ChevronRight, Truck, Tag, Globe, Camera } from 'lucide-react';
 import { demoProducts, score } from './data';
 import Login from './pages/Login';
-import { searchRequest, readLinkRequest, looksLikeUrl, looksLikeImageUrl, imageSearchRequest, shrinkImage, getSizesRequest, saveSizesRequest, offersRequest, sizeStockRequest } from './services/api';
+import { searchRequest, readLinkRequest, looksLikeUrl, looksLikeImageUrl, imageSearchRequest, shrinkImage, getSizesRequest, saveSizesRequest, offersRequest, sizeStockRequest, reportRequest } from './services/api';
 import VerifyEmail from './pages/VerifyEmail';
 import WishlistPage from './pages/Wishlist';
 import SaveButton from './components/SaveButton';
@@ -302,9 +302,60 @@ function StoreButton({ p }) {
 /* ---------- Sprint 6: all stores for this exact item ---------- */
 const SIZE_LABEL = { in: ['in stock', 'ok'], out: ['sold out', 'bad'], 'not offered': ['not offered', 'bad'], unknown: ['check at store', 'unknown'] };
 
+// Brand guess from a product title: its first word, unless that's a generic word.
+const NOT_BRANDS = new Set(['man', 'woman', 'men', 'mens', "men's", 'women', 'womens', "women's", 'unisex', 'boys', 'girls', 'kids', 'the', 'a', 'new', 'solid', 'washed', 'regular', 'slim', 'oversized', 'printed', 'casual', 'denim', 'cotton', 'blue', 'black', 'white', 'dark', 'light', 'full', 'half', 'classic', 'premium', 'stylish', 'trendy', 'latest']);
+function brandOf(title) {
+  const w = String(title || '').trim().split(/\s+/)[0] || '';
+  const clean = w.replace(/[^A-Za-z0-9&'.-]/g, '');
+  if (clean.length < 2 || NOT_BRANDS.has(clean.toLowerCase())) return null;
+  return clean.toUpperCase() === clean ? clean[0] + clean.slice(1).toLowerCase() : clean;
+}
+
+// Word overlap between two product names (0..1), for the "name looks different" warning.
+const nameWords = (t) => new Set(String(t || '').toLowerCase().replace(/[^a-z0-9 ]/g, ' ').split(/\s+/).filter((w) => w.length > 2 && !['men', 'mens', 'women', 'womens', 'for', 'the', 'and', 'with'].includes(w)));
+const nameOverlap = (a, b) => {
+  const A = nameWords(a); const B = nameWords(b);
+  if (!A.size || !B.size) return 1;
+  let n = 0; A.forEach((w) => { if (B.has(w)) n += 1; });
+  return n / Math.min(A.size, B.size);
+};
+
+function ReportBox({ p, offers }) {
+  const [open, setOpen] = useState(false);
+  const [reason, setReason] = useState('wrong item');
+  const [note, setNote] = useState('');
+  const [storeUrl, setStoreUrl] = useState('');
+  const [done, setDone] = useState('');
+  if (done) return <p className="reportdone">{done}</p>;
+  if (!open) return <button type="button" className="linkbtn" onClick={() => setOpen(true)}>⚑ report wrong match or price</button>;
+  const send = async (e) => {
+    e.preventDefault();
+    const o = offers.find((x) => x.url === storeUrl);
+    try {
+      const d = await reportRequest({ reason, note, productId: p.id, title: p.title, store: o?.store || p.store, url: o?.url || '', price: o?.price || p.price });
+      setDone(d.message || 'thanks! ♡');
+    } catch (err) { setDone(err.message); }
+  };
+  return (
+    <form className="reportbox" onSubmit={send}>
+      <b>what&apos;s wrong?</b>
+      <select value={reason} onChange={(e) => setReason(e.target.value)} aria-label="reason">
+        {['wrong item', 'wrong price', 'broken link', 'size info wrong', 'other'].map((r) => <option key={r}>{r}</option>)}
+      </select>
+      <select value={storeUrl} onChange={(e) => setStoreUrl(e.target.value)} aria-label="which store">
+        <option value="">any / all stores</option>
+        {offers.map((o) => <option key={o.url} value={o.url}>{o.store}</option>)}
+      </select>
+      <input value={note} onChange={(e) => setNote(e.target.value)} placeholder="optional note" maxLength={300} aria-label="note" />
+      <button className="btn tiny" type="submit">send</button>
+    </form>
+  );
+}
+
 function StoresPanel({ p, mySize, kind, onClose }) {
   const [state, setState] = useState({ loading: true });
-  const [stock, setStock] = useState({});           // url -> 'in' | 'out' | 'not offered' | 'unknown' | 'loading'
+  const [stock, setStock] = useState({});           // url -> size-reader reply ('loading' while checking)
+  const [img, setImg] = useState(0);
   useEffect(() => {
     let dead = false;
     offersRequest({ productId: p.id, token: p.token })
@@ -313,15 +364,15 @@ function StoresPanel({ p, mySize, kind, onClose }) {
     return () => { dead = true; };
   }, [p.id, p.token]);
 
-  // Check size stock on each store page, 3 at a time (free).
+  // Read each store's own page (free): sizes in stock + description/colours/material where shared. 3 at a time.
   useEffect(() => {
-    if (!state.offers?.length || !mySize) return undefined;
+    if (!state.offers?.length) return undefined;
     let dead = false;
     const urls = state.offers.map((o) => o.url);
     setStock(Object.fromEntries(urls.map((u) => [u, 'loading'])));
     (async () => {
       for (let i = 0; i < urls.length; i += 3) {
-        const part = await Promise.all(urls.slice(i, i + 3).map((u) => sizeStockRequest(u, mySize).then((d) => [u, d.mine]).catch(() => [u, 'unknown'])));
+        const part = await Promise.all(urls.slice(i, i + 3).map((u) => sizeStockRequest(u, mySize || '').then((d) => [u, d]).catch(() => [u, { status: 'unknown', mine: 'unknown' }])));
         if (dead) return;
         setStock((s) => ({ ...s, ...Object.fromEntries(part) }));
       }
@@ -330,17 +381,33 @@ function StoresPanel({ p, mySize, kind, onClose }) {
   }, [state.offers, mySize]);
 
   const offers = state.offers || [];
-  const best = offers.find((o) => o.youPay !== null && (!mySize || stock[o.url] !== 'out')) || null;
+  const product = state.product || {};
+  const statusOf = (o) => (typeof stock[o.url] === 'object' ? stock[o.url].mine : stock[o.url]);
+  const best = offers.find((o) => o.youPay !== null && (!mySize || statusOf(o) !== 'out')) || null;
+  const pageInfo = Object.values(stock).find((d) => typeof d === 'object' && d.details) || null;
+  const det = pageInfo?.details || {};
+  const images = (product.images?.length ? product.images : [p.image]).filter(Boolean);
+  const allSizes = Object.values(stock).find((d) => typeof d === 'object' && d.status === 'ok')?.sizes || [];
+  const description = product.description || det.description;
+  const colours = product.colours?.length ? product.colours : det.colours || [];
+
   return (
     <div className="popwrap storespop" role="dialog" aria-label="all stores for this item" onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}>
       <Window title="all_stores.exe" tone="pink" icon="⇄" popup onClose={onClose}>
         <div className="storeshead">
-          {p.image && <img src={p.image} alt="" />}
-          <div>
-            <b>{p.title}</b>
+          <div className="gallery">
+            {images[img] && <img src={images[img]} alt={p.title} />}
+            {images.length > 1 && <div className="thumbs">{images.slice(0, 6).map((u, i) => <button type="button" key={u} className={i === img ? 'on' : ''} onClick={() => setImg(i)} aria-label={`photo ${i + 1}`}><img src={u} alt="" /></button>)}</div>}
+          </div>
+          <div className="headinfo">
+            {product.brand && <small className="brandtag">{product.brand}</small>}
+            <b>{product.title || p.title}</b>
+            {product.rating ? <small>★ {product.rating}{product.reviews ? ` (${product.reviews} reviews)` : ''}</small> : null}
             <small>{mySize ? <>your {kind} size: <b>{mySize}</b></> : <>set your {kind} size in filters to check stock</>}</small>
+            <small className="why">grouped as the same product by Google Shopping · always check the store page before buying</small>
           </div>
         </div>
+
         {state.loading ? <p className="lg-msg">finding every store for this item… (uses 1 search the first time)</p>
           : state.error ? <p className="lg-msg">{state.error}</p>
           : !offers.length ? <p className="lg-msg">no other stores found for this exact item.</p>
@@ -349,24 +416,63 @@ function StoresPanel({ p, mySize, kind, onClose }) {
               {best && <p className="storesverdict">lowest you pay{mySize ? ' in your size' : ''}: <b>{money(best.youPay)}</b> at {best.store}</p>}
               <div className="storestable" role="table">
                 <div className="srow shead" role="row">
-                  <span>store</span><span>item</span><span>delivery</span><span>you pay</span>{mySize && <span>size {mySize}</span>}<span>returns</span><span />
+                  <span>store</span><span>item</span><span>delivery</span><span>you pay</span><span>{mySize ? `size ${mySize}` : 'sizes'}</span><span>returns</span><span />
                 </div>
                 {offers.map((o) => {
-                  const st = SIZE_LABEL[stock[o.url]] || (stock[o.url] === 'loading' ? ['checking…', 'unknown'] : null);
+                  const d = stock[o.url];
+                  const st = d === 'loading' ? ['checking…', 'unknown'] : SIZE_LABEL[typeof d === 'object' ? d.mine : 'unknown'];
+                  const differs = o.listingTitle && nameOverlap(o.listingTitle, product.title || p.title) < 0.5;
+                  const sizesHere = typeof d === 'object' && d.status === 'ok' ? d.sizes : null;
                   return (
                     <div className={`srow${best && o.url === best.url ? ' best' : ''}`} role="row" key={o.url}>
-                      <span><b>{o.store}</b>{o.rating ? <small>★ {o.rating}{o.reviews ? ` (${o.reviews})` : ''}</small> : null}</span>
+                      <span><b>{o.store}</b>{o.rating ? <small>★ {o.rating}{o.reviews ? ` (${o.reviews})` : ''}</small> : null}
+                        {differs && <small className="warnname" title={o.listingTitle}>⚠ name differs: check it&apos;s the same item</small>}</span>
                       <span>{money(o.price)}{o.originalPrice && <s>{money(o.originalPrice)}</s>}</span>
                       <span>{o.delivery === null ? <em>check at store</em> : o.delivery === 0 ? 'free' : money(o.delivery)}</span>
                       <span>{o.youPay !== null ? <><b>{money(o.youPay)}</b><small>{o.verified ? 'total from store' : 'estimated'}</small></> : <em>item + delivery</em>}</span>
-                      {mySize && <span className={`stock ${st?.[1] || 'unknown'}`}>{st?.[0] || 'check at store'}</span>}
+                      <span>
+                        {mySize ? <span className={`stock ${st?.[1] || 'unknown'}`}>{st?.[0] || 'check at store'}</span> : null}
+                        {sizesHere ? <small className="sizelist">{sizesHere.map((z) => <i key={z.size} className={z.available ? 'in' : 'out'}>{z.size}</i>)}</small>
+                          : !mySize ? <em>{d === 'loading' ? 'checking…' : 'check at store'}</em> : null}
+                      </span>
                       <span className="returns">{o.returns || <em>see store</em>}</span>
                       <span><a className="btn tiny" href={o.url} target="_blank" rel="noopener noreferrer">visit ↗</a></span>
                     </div>
                   );
                 })}
               </div>
-              <p className="disclaimer">{offers.length} stores · checked {ago(state.fetchedAt)}{state.cached ? ' (saved, free)' : ''}. size stock is read from the store&apos;s own page where it&apos;s shared; coupons and card offers aren&apos;t included.</p>
+
+              {(description || colours.length || det.material || product.features?.length || allSizes.length) ? (
+                <div className="proddetails">
+                  <b>product details</b>
+                  {description && <p>{description}</p>}
+                  {product.features?.length ? <ul>{product.features.map((f) => <li key={f}>{f}</li>)}</ul> : null}
+                  <div className="facts">
+                    {det.material && <span><em>material</em>{det.material}</span>}
+                    {colours.length ? <span><em>colours</em>{colours.join(', ')}</span> : null}
+                    {(product.sizes?.length || allSizes.length) ? <span><em>sizes</em>{(product.sizes?.length ? product.sizes : allSizes.map((z) => z.size)).join(', ')}</span> : null}
+                  </div>
+                  {pageInfo && <small>size stock and details read from the store&apos;s own page.</small>}
+                </div>
+              ) : null}
+
+              {product.similar?.length ? (
+                <div className="similarrow">
+                  <b>similar items</b>
+                  <div>{product.similar.slice(0, 5).map((m) => (
+                    <Link key={m.title} to={`/search?q=${encodeURIComponent(m.title)}`} onClick={onClose} className="simcard">
+                      {m.image && <img src={m.image} alt="" />}
+                      <span>{m.title}</span>
+                      {m.price ? <b>{money(m.price)}</b> : null}
+                    </Link>
+                  ))}</div>
+                </div>
+              ) : null}
+
+              <div className="storesfoot">
+                <p className="disclaimer">{offers.length} store{offers.length > 1 ? 's' : ''} · checked {ago(state.fetchedAt)}{state.cached ? ' (saved, free)' : ''}. coupons and card offers aren&apos;t included.</p>
+                <ReportBox p={p} offers={offers} />
+              </div>
             </>
           )}
       </Window>
@@ -599,6 +705,9 @@ function SearchPage() {
   const [store, setStore] = useState('all');
   const [liveCap, setLiveCap] = useState(null);
   const [knownDelivery, setKnownDelivery] = useState(false);
+  const [brand, setBrand] = useState('all');
+  const [condition, setCondition] = useState('all');   // all | new | pre-owned
+  const [minDisc, setMinDisc] = useState(0);
   const [sort, setSort] = useState('deal');
 
   // Run a live search whenever the ?q= in the address changes.
@@ -648,6 +757,13 @@ function SearchPage() {
   const liveMode = Boolean(live);
   const liveMax = liveMode && live.results.length ? Math.ceil(Math.max(...live.results.map((p) => p.price)) / 50) * 50 : 0;
   const liveStores = liveMode ? ['all', ...new Set(live.results.map((p) => p.store))] : [];
+  const liveBrands = useMemo(() => {
+    if (!liveMode) return [];
+    const n = {};
+    live.results.forEach((p) => { const b = brandOf(p.title); if (b) n[b] = (n[b] || 0) + 1; });
+    return Object.entries(n).filter(([, c]) => c >= 2).sort((a, b) => b[1] - a[1]).slice(0, 10).map(([b]) => b);
+  }, [live, liveMode]);
+  const hasPreOwned = liveMode && live.results.some((p) => p.secondHand);
 
   const liveAvg = useMemo(() => {
     if (!liveMode || !live.results.length) return 0;
@@ -660,11 +776,12 @@ function SearchPage() {
     const capV = liveCap ?? liveMax;
     const eff = (p) => p.finalPrice ?? p.price;
     return live.results
-      .filter((p) => (store === 'all' || p.store === store) && p.price <= capV && (!knownDelivery || p.delivery !== null) && (!onlySame || matchInfo(p, source, live.query)?.same))
-      .sort((a, b) => (sort === 'final' ? eff(a) - eff(b) : sort === 'price' ? a.price - b.price
+      .filter((p) => (store === 'all' || p.store === store) && p.price <= capV && (!knownDelivery || p.delivery !== null) && (!onlySame || matchInfo(p, source, live.query)?.same)
+        && (brand === 'all' || brandOf(p.title) === brand) && (condition === 'all' || (condition === 'pre-owned') === Boolean(p.secondHand)) && (p.discount || 0) >= minDisc)
+      .sort((a, b) => (sort === 'final' ? eff(a) - eff(b) : sort === 'price' ? a.price - b.price : sort === 'discount' ? (b.discount || 0) - (a.discount || 0)
         : sort === 'foryou' ? (fitFor(b, passport).score - fitFor(a, passport).score) || (b.dealScore - a.dealScore)
         : b.dealScore - a.dealScore));
-  }, [live, liveMode, store, liveCap, liveMax, knownDelivery, sort, onlySame, source, passport]);
+  }, [live, liveMode, store, liveCap, liveMax, knownDelivery, sort, onlySame, source, passport, brand, condition, minDisc]);
 
   const demoShown = useMemo(() => {
     const words = (notice ? urlQ : '').toLowerCase().split(/\s+/).filter(Boolean);
@@ -695,10 +812,30 @@ function SearchPage() {
             ))}</div>
             <b>max price <em>{money(liveCap ?? liveMax)}</em></b>
             <input type="range" min="0" max={liveMax} step="50" value={liveCap ?? liveMax} onChange={(e) => setLiveCap(Number(e.target.value))} />
+            {liveBrands.length > 1 && (
+              <>
+                <b>brand</b>
+                <div className="chips">{['all', ...liveBrands].map((x) => (
+                  <button type="button" key={x} className={`chip${brand === x ? ' on' : ''}`} aria-pressed={brand === x} onClick={() => setBrand(x)}>{x}</button>
+                ))}</div>
+              </>
+            )}
+            <b>minimum discount</b>
+            <div className="chips">{[0, 10, 20, 30, 50].map((x) => (
+              <button type="button" key={x} className={`chip${minDisc === x ? ' on' : ''}`} aria-pressed={minDisc === x} onClick={() => setMinDisc(x)}>{x ? `${x}%+` : 'any'}</button>
+            ))}</div>
+            {hasPreOwned && (
+              <>
+                <b>condition</b>
+                <div className="chips">{[['all', 'all'], ['new', 'new'], ['pre-owned', 'pre-owned']].map(([v, t]) => (
+                  <button type="button" key={v} className={`chip${condition === v ? ' on' : ''}`} aria-pressed={condition === v} onClick={() => setCondition(v)}>{t}</button>
+                ))}</div>
+              </>
+            )}
             <label className="check2"><input type="checkbox" checked={knownDelivery} onChange={(e) => setKnownDelivery(e.target.checked)} /> only show known delivery cost</label>
             {source && <label className="check2"><input type="checkbox" checked={onlySame} onChange={(e) => setOnlySame(e.target.checked)} /> only “likely same item”</label>}
             <SizePicker sizes={mySizes} onSave={saveSizes} />
-            <button className="btn block" onClick={() => { setStore('all'); setLiveCap(null); setKnownDelivery(false); }}>reset</button>
+            <button className="btn block" onClick={() => { setStore('all'); setLiveCap(null); setKnownDelivery(false); setBrand('all'); setCondition('all'); setMinDisc(0); }}>reset</button>
           </Window>
         ) : (
           <Filters f={{ aud, setAud, platform, setPlatform, sizes, colors, toggle, cap, setCap, maxP, reset: resetDemo }} />
@@ -726,6 +863,7 @@ function SearchPage() {
                 <option value="deal">best deal</option>
                 {liveMode && passport && <option value="foryou">for you ♡</option>}
                 {liveMode && <option value="final">lowest final price</option>}
+                {liveMode && <option value="discount">largest discount</option>}
                 <option value="price">lowest item price</option>
               </select>
             </div>
@@ -827,7 +965,24 @@ function SearchPage() {
           {linkParam && !urlQ ? null : loading ? (
             <div className="products">{[0, 1, 2, 3, 4, 5].map((i) => <div key={i} className="skeleton" />)}</div>
           ) : liveMode ? (
-            <div className="products">{liveShown.map((p) => <LiveCard key={p.id} p={p} fit={fitFor(p, passport)} avg={liveAvg} sizes={mySizes} fetchedAt={live.fetchedAt} query={live.query} match={photo ? photoMatch(p, photo.source) : matchInfo(p, source, live.query)} />)}</div>
+            (() => {
+              const card = (p) => <LiveCard key={p.id} p={p} fit={fitFor(p, passport)} avg={liveAvg} sizes={mySizes} fetchedAt={live.fetchedAt} query={live.query} match={photo ? photoMatch(p, photo.source) : matchInfo(p, source, live.query)} />;
+              if (!source || photo) return <div className="products">{liveShown.map(card)}</div>;
+              const exact = liveShown.filter((p) => matchInfo(p, source, live.query)?.same);
+              const similar = liveShown.filter((p) => !matchInfo(p, source, live.query)?.same);
+              return (
+                <>
+                  <h3 className="sectionhead">exact matches <small>{exact.length ? `${exact.length} · same brand and product words as your link` : 'none found. the closest alternatives are below'}</small></h3>
+                  {exact.length > 0 && <div className="products">{exact.map(card)}</div>}
+                  {similar.length > 0 && !onlySame && (
+                    <>
+                      <h3 className="sectionhead">similar alternatives <small>{similar.length} · similar items at other prices</small></h3>
+                      <div className="products">{similar.map(card)}</div>
+                    </>
+                  )}
+                </>
+              );
+            })()
           ) : photo ? null : (
             <div className="products">{demoShown.map((p) => <ProductCard key={p.id} p={p} />)}</div>
           )}

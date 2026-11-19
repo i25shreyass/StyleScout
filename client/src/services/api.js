@@ -192,3 +192,11 @@ export async function sizeStockRequest(url, size) {
   const res = await fetch(`${BASE}/api/search/sizes?${qs}`);
   return res.ok ? res.json() : { status: 'unknown', mine: 'unknown', sizes: [] };
 }
+
+// Sprint 8: "report wrong match or price"
+export async function reportRequest(body) {
+  const res = await fetch(`${BASE}/api/search/report`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data.message || 'Could not send the report.');
+  return data;
+}

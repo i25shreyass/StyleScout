@@ -5,6 +5,7 @@ import crypto from 'crypto';
 import { searchProducts, searchByImage, findStoreLink, getSellers, SearchError } from '../services/shopping.js';
 import { readProductLink } from '../services/linkReader.js';
 import { readSizes, sizeStatus } from '../services/sizeReader.js';
+import Report from '../models/Report.js';
 
 const r = Router();
 
@@ -139,14 +140,24 @@ r.get('/offers', async (req, res) => {
   const token = String(req.query.token || '').slice(0, 8000) || null;
   if (!productId && !token) return res.status(400).json({ message: 'This offer has no product details to compare.', code: 'NO_PRODUCT' });
   try {
-    const { sellers, cached, fetchedAt } = await getSellers({ productId: productId || null, token });
+    const { sellers, product, cached, fetchedAt } = await getSellers({ productId: productId || null, token });
     const offers = [...sellers].sort((a, b) => (a.youPay ?? a.price + 1e7) - (b.youPay ?? b.price + 1e7));
-    res.json({ offers, cached, fetchedAt });
+    res.json({ offers, product, cached, fetchedAt });
   } catch (e) {
     if (e instanceof SearchError) return res.status(e.status).json({ message: e.message, code: e.code });
     console.error('Offers lookup failed:', e);
     res.status(500).json({ message: 'Could not load the stores for this item.' });
   }
+});
+
+// POST /api/search/report { reason, note?, productId?, title?, store?, url?, price? }
+r.post('/report', async (req, res) => {
+  const b = req.body || {};
+  const reasons = ['wrong item', 'wrong price', 'broken link', 'size info wrong', 'other'];
+  if (!reasons.includes(b.reason)) return res.status(400).json({ message: 'Pick a reason.' });
+  const s = (v, n) => (v == null ? undefined : String(v).slice(0, n));
+  await Report.create({ reason: b.reason, note: s(b.note, 300), productId: s(b.productId, 80), title: s(b.title, 200), store: s(b.store, 80), url: s(b.url, 2000), price: Number(b.price) || undefined });
+  res.json({ ok: true, message: 'thanks! the team will check it ♡' });
 });
 
 // GET /api/search/sizes?url=<store product page>&size=M   (free: reads the store page, no search quota)
