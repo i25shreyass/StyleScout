@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react';
+import logo from '../assets/intro/stylescout-chrome-logo.webp';
 import { Link, NavLink, useNavigate } from 'react-router-dom';
 import { Home, Search, ArrowLeftRight, Heart, Bell, User } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
@@ -81,7 +82,7 @@ export function TopNav() {
   const cls = ({ isActive }) => `navitem${isActive ? ' on' : ''}`;
   return (
     <header className="topnav">
-      <Link className="brand bubble" to="/home">StyleScout<span>✦</span></Link>
+      <Link className="brand brandlogo" to="/home" aria-label="StyleScout home"><img src={logo} alt="StyleScout" /></Link>
       <nav>
         {items.map(([to, label, Icon]) => (
           <NavLink key={to} to={to} className={cls}><Icon size={22} /><span>{label}</span></NavLink>
@@ -116,7 +117,7 @@ export const Sparkle = ({ className = '' }) => <span className={`spark ${classNa
 
 /* ---------- Strips & footer ---------- */
 export function Ticker() {
-  const msg = '★ new drop every friday ♡ compare before you buy ★ direct store links ♡ best deal score on every item ';
+  const msg = '★ compare before you buy ♡ final price with delivery ★ direct store links ♡ your size, checked ★ price-drop alerts ♡ ';
   return (
     <div className="ticker" aria-hidden="true">
       <div className="track"><span>{msg.repeat(3)}</span><span>{msg.repeat(3)}</span></div>
@@ -129,7 +130,7 @@ export function Footer() {
     <footer className="footer">
       <div className="checker" />
       <div className="footgrid">
-        <div><div className="bubble small">StyleScout✦</div><small>© 2026 StyleScout. a college web-dev project. retailer data is demo data.</small></div>
+        <div><img className="footlogo" src={logo} alt="StyleScout" /><small>© 2026 StyleScout · a college web-dev project. prices and stock come from each store and can change, so check the store page before you buy.</small></div>
         <div><b>explore</b><Link to="/search">search</Link><Link to="/compare">compare</Link><Link to="/wishlist">wishlist</Link></div>
         <div><b>account</b><Link to="/login">log in</Link><Link to="/profile">profile</Link><Link to="/alerts">price alerts</Link></div>
       </div>

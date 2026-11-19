@@ -150,7 +150,7 @@ export default function Passport() {
                     </ul>
                     <div className="profactions">
                       <button type="button" className="btn blue tiny" onClick={clearAll}>clear all history</button>
-                      <small style={{ opacity: 0.7 }}>tap a search to run it again. saved results are free for 12 hours.</small>
+                      <small style={{ opacity: 0.7 }}>tap a search to run it again.</small>
                     </div>
                   </>
                 )}

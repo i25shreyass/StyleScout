@@ -7,6 +7,7 @@ import { searchRequest, readLinkRequest, looksLikeUrl, looksLikeImageUrl, imageS
 import VerifyEmail from './pages/VerifyEmail';
 import WishlistPage from './pages/Wishlist';
 import SaveButton from './components/SaveButton';
+import chromeLogo from './assets/intro/stylescout-chrome-logo.webp';
 import AlertButton from './components/AlertButton';
 import AlertsPage from './pages/Alerts';
 import Passport from './pages/Passport';
@@ -58,7 +59,7 @@ function Landing() {
         <div className="landinginner">
           <Phone className="lphone" />
           <div className="lcenter">
-            <div className="bubble huge">StyleScout<span>✦</span></div>
+            <img className="landinglogo" src={chromeLogo} alt="StyleScout" />
             <p className="tagline">find • compare • style</p>
             <button className="press" onClick={() => nav('/home')}>press<br /><span>start</span></button>
           </div>
@@ -83,14 +84,96 @@ function audienceOf(title) {
   return null;
 }
 
+// Top of the price slider: ignores the most expensive 5% so one luxury item doesn't stretch it.
+function sliderMax(prices) {
+  if (!prices.length) return 5000;
+  const v = [...prices].sort((a, b) => a - b);
+  return Math.ceil(v[Math.min(v.length - 1, Math.floor(v.length * 0.95))] / 50) * 50;
+}
+
+/* ---------- colour of an item (from its title) ---------- */
+const COLOUR_SWATCH = [
+  ['black', '#16131f', /\b(black|jet black|charcoal)\b/], ['white', '#ffffff', /\b(white|off[- ]?white|ivory|cream)\b/],
+  ['grey', '#9aa0a6', /\b(grey|gray|silver|ash)\b/], ['blue', '#3b6cf6', /\b(blue|navy|denim|indigo|teal|turquoise|aqua|sky)\b/],
+  ['red', '#d83a3a', /\b(red|maroon|burgundy|wine|crimson)\b/], ['pink', '#f487df', /\b(pink|rose|blush|fuchsia|magenta|peach)\b/],
+  ['purple', '#806cf5', /\b(purple|lavender|lilac|violet|mauve)\b/], ['green', '#2fa35a', /\b(green|olive|mint|sage|emerald|khaki green)\b/],
+  ['yellow', '#f5d33b', /\b(yellow|mustard|lemon|gold(en)?)\b/], ['orange', '#f58a3b', /\b(orange|rust|coral|tangerine)\b/],
+  ['beige', '#e3d1ad', /\b(beige|khaki|tan|camel|nude|sand)\b/], ['brown', '#7a4b2a', /\b(brown|coffee|chocolate|mocha)\b/],
+];
+function colourOf(title) {
+  const t = String(title || '').toLowerCase();
+  const hit = COLOUR_SWATCH.find(([, , re]) => re.test(t));
+  return hit ? hit[0] : null;
+}
+// Colour swatches that actually appear in a list of items, with counts.
+function ColourFilter({ items, value, onChange }) {
+  const n = {};
+  items.forEach((p) => { const c = colourOf(p.title); if (c) n[c] = (n[c] || 0) + 1; });
+  const present = COLOUR_SWATCH.filter(([c]) => n[c]);
+  if (!present.length) return null;
+  return (
+    <>
+      <b>colour</b>
+      <div className="dots">
+        {present.map(([c, hex]) => (
+          <button type="button" key={c} title={`${c} (${n[c]})`} aria-label={`${c}, ${n[c]} items`} aria-pressed={value === c}
+            className={value === c ? 'on' : ''} style={{ background: hex }} onClick={() => onChange(value === c ? 'all' : c)} />
+        ))}
+      </div>
+      <small className="filternote">{value !== 'all' ? <>showing <b>{value}</b> items · <button type="button" className="linkbtn" onClick={() => onChange('all')}>clear</button></> : 'worked out from product names'}</small>
+    </>
+  );
+}
+
+// Filters for the "scouted today" products shown before searching.
+function BrowseFilters({ value, onChange, items }) {
+  const set = (k) => (v) => onChange({ ...value, [k]: v });
+  const maxP = sliderMax(items.map((p) => p.price));
+  const auds = ['women', 'men', 'unisex', 'kids'].filter((a) => items.some((p) => audienceOf(p.title) === a));
+  return (
+    <Window title="✦ FILTERS.exe" tone="pink" className="filters" icon="⚙">
+      {auds.length > 0 && (
+        <>
+          <b>for</b>
+          <div className="chips">{['all', ...auds].map((a) => (
+            <button type="button" key={a} className={`chip${value.aud === a ? ' on' : ''}`} aria-pressed={value.aud === a} onClick={() => set('aud')(a)}>{a}</button>
+          ))}</div>
+        </>
+      )}
+      <ColourFilter items={items} value={value.colour} onChange={set('colour')} />
+      <b>price range</b>
+      <div className="pricebox">
+        <label>min ₹<input type="number" inputMode="numeric" min="0" step="50" value={value.min ?? ''} placeholder="0" onChange={(e) => set('min')(e.target.value === '' ? null : Math.max(0, Number(e.target.value)))} aria-label="minimum price" /></label>
+        <span>–</span>
+        <label>max ₹<input type="number" inputMode="numeric" min="0" step="50" value={value.max ?? ''} placeholder={String(maxP)} onChange={(e) => set('max')(e.target.value === '' ? null : Math.max(0, Number(e.target.value)))} aria-label="maximum price" /></label>
+      </div>
+      <div className="dualrange">
+        <input type="range" min="0" max={maxP} step="50" value={Math.min(value.min ?? 0, value.max ?? maxP)} onChange={(e) => set('min')(Math.min(Number(e.target.value), value.max ?? maxP))} aria-label="minimum price slider" />
+        <input type="range" min="0" max={maxP} step="50" value={value.max ?? maxP} onChange={(e) => { const v = Number(e.target.value); set('max')(v >= maxP ? null : Math.max(v, value.min ?? 0)); }} aria-label="maximum price slider" />
+      </div>
+      <small className="filternote">{money(value.min ?? 0)} to {value.max == null ? 'any price' : money(value.max)}</small>
+      <button className="btn block" type="button" onClick={() => onChange(EMPTY_BROWSE)}>reset</button>
+    </Window>
+  );
+}
+const EMPTY_BROWSE = { aud: 'all', colour: 'all', min: null, max: null };
+const browseMatch = (p, f) => (!f || ((f.aud === 'all' || audienceOf(p.title) === f.aud || (f.aud !== 'kids' && audienceOf(p.title) === 'unisex'))
+  && (f.colour === 'all' || colourOf(p.title) === f.colour) && p.price >= (f.min ?? 0) && p.price <= (f.max ?? Infinity)));
+
 /* ---------- real products by category (homepage + empty search page) ---------- */
-function FeaturedBrowser({ start = 'all', perPage = 12 }) {
+// tells the parent which items are in the current tab (so the filters can show matching colours/prices)
+function ReportItems({ items, onItems }) {
+  useEffect(() => { onItems(items); }, [items.length, items[0]?.id]); // eslint-disable-line react-hooks/exhaustive-deps
+  return null;
+}
+
+function FeaturedBrowser({ start = 'all', perPage = 12, filter = null, onItems }) {
   const nav = useNavigate();
   const [data, setData] = useState(null);
   const [cat, setCat] = useState(start);
   const [shown, setShown] = useState(perPage);
   useEffect(() => { featuredRequest().then(setData).catch(() => setData({ categories: [], total: 0 })); }, []);
-  useEffect(() => { setShown(perPage); }, [cat, perPage]);
+  useEffect(() => { setShown(perPage); }, [cat, perPage, filter]);
   const sizes = readSizes();
   const imageSearch = (p) => nav(`/search?img=${encodeURIComponent(p.image)}`);
   if (!data) return <div className="products">{[0, 1, 2, 3].map((i) => <div key={i} className="skeleton" />)}</div>;
@@ -99,7 +182,8 @@ function FeaturedBrowser({ start = 'all', perPage = 12 }) {
   // "everything" mixes categories round-robin so the grid looks varied
   const mixed = [];
   for (let i = 0; mixed.length < data.total && i < 200; i += 1) cats.forEach((c) => { if (c.items[i]) mixed.push(c.items[i]); });
-  const items = cat === 'all' ? mixed : (cats.find((c) => c.key === cat)?.items || []);
+  const catItems = cat === 'all' ? mixed : (cats.find((c) => c.key === cat)?.items || []);
+  const items = catItems.filter((p) => browseMatch(p, filter));
   return (
     <div className="featured">
       <div className="cattabs" role="tablist">
@@ -110,9 +194,11 @@ function FeaturedBrowser({ start = 'all', perPage = 12 }) {
           </button>
         ))}
       </div>
+      {onItems && <ReportItems items={catItems} onItems={onItems} />}
+      {!items.length && <div className="banner soft">no products match these filters. try a wider price range or another colour.</div>}
       <div className="products">{items.slice(0, shown).map((p) => <LiveCard key={`${p.query}-${p.id}`} p={p} sizes={sizes} query={p.query} onImageSearch={imageSearch} />)}</div>
       {shown < items.length && <button type="button" className="btn blue morebtn" onClick={() => setShown((n) => n + perPage * 2)}>show more ({items.length - shown} left)</button>}
-      <p className="disclaimer">real offers from our latest scouting{data.updatedAt ? ` (${ago(data.updatedAt)})` : ''}. search for live prices, or hover a photo to find look-alikes.</p>
+      <p className="disclaimer">real offers from our latest scouting{data.updatedAt ? ` (${ago(data.updatedAt)})` : ''}. search for the latest prices, or hover a photo to find look-alikes.</p>
     </div>
   );
 }
@@ -168,9 +254,9 @@ function Home() {
       </div>
 
       <div className="perks">
-        <span><Truck size={22} /> <b>compare delivery</b> days &amp; fees</span>
-        <span><Tag size={22} /> <b>best deal score</b> on every item</span>
-        <span><Globe size={22} /> <b>6 stores</b> one search</span>
+        <span><Truck size={22} /> <b>final price</b> with delivery included</span>
+        <span><Tag size={22} /> <b>deal badges</b> vs the usual price</span>
+        <span><Globe size={22} /> <b>every store</b> for the same item</span>
       </div>
 
       <Window title="scouted_today.exe" icon="✦" className="featuredwin">
@@ -456,7 +542,7 @@ function StoresPanel({ p, mySize, kind, onClose }) {
           </div>
         </div>
 
-        {state.loading ? <p className="lg-msg">finding every store for this item… (uses 1 search the first time)</p>
+        {state.loading ? <p className="lg-msg">finding every store for this item…</p>
           : state.error ? <p className="lg-msg">{state.error}</p>
           : !offers.length ? <p className="lg-msg">no other stores found for this exact item.</p>
           : (
@@ -518,7 +604,7 @@ function StoresPanel({ p, mySize, kind, onClose }) {
               ) : null}
 
               <div className="storesfoot">
-                <p className="disclaimer">{offers.length} store{offers.length > 1 ? 's' : ''} · checked {ago(state.fetchedAt)}{state.cached ? ' (saved, free)' : ''}. coupons and card offers aren&apos;t included.</p>
+                <p className="disclaimer">{offers.length} store{offers.length > 1 ? 's' : ''} · checked {ago(state.fetchedAt)}. coupons and card offers aren&apos;t included.</p>
                 <ReportBox p={p} offers={offers} />
               </div>
             </>
@@ -554,7 +640,7 @@ function LiveCard({ p, match, avg, sizes, fetchedAt, query = '', fit, onImageSea
         {p.image ? <img src={p.image} alt={p.title} loading="lazy" /> : <div className="noimg">no image</div>}
         {p.image && onImageSearch && (
           <button type="button" className="imgsearch" onClick={() => onImageSearch(p)} aria-label={`image search for ${p.title}`}>
-            <span>⌕ image search</span><small>find look-alikes · 1 search</small>
+            <span>⌕ image search</span><small>find look-alikes</small>
           </button>
         )}
         {p.belowTypical >= 15 && <span className="burst">GOOD<br />DEAL</span>}
@@ -764,6 +850,9 @@ function SearchPage() {
   const [liveMin, setLiveMin] = useState(null);
   const [liveAud, setLiveAud] = useState('all');
   const PAGE = 30;
+  const [browse, setBrowse] = useState(EMPTY_BROWSE);
+  const [browseItems, setBrowseItems] = useState([]);
+  const [liveColour, setLiveColour] = useState('all');
   const [showN, setShowN] = useState(PAGE);   // results shown before "show more"
   const [moreState, setMoreState] = useState({ round: 0, busy: false, done: false, note: '' });
   useEffect(() => { setMoreState({ round: 0, busy: false, done: false, note: '' }); }, [urlQ]);
@@ -783,7 +872,7 @@ function SearchPage() {
       const added = fresh.length;
       setLive((c) => (c ? { ...c, results: [...c.results, ...fresh] } : c));
       setShowN((n) => n + added);
-      setMoreState({ round, busy: false, done: Boolean(d.lastRound), note: `added ${added} new products (searched “${d.variation}”)` });
+      setMoreState({ round, busy: false, done: Boolean(d.lastRound), note: added ? `added ${added} new products` : 'no new products this time, try again' });
     } catch (e) {
       setMoreState((m) => ({ ...m, busy: false, note: e.message }));
     }
@@ -801,7 +890,7 @@ function SearchPage() {
     if (!linkParam) setInput(urlQ);
     setOnlySame(false);
     setAud(params.get('aud') || 'all');
-    setStore('all'); setLiveCap(null); setLiveMin(null); setLiveAud('all'); setKnownDelivery(false);
+    setStore('all'); setLiveCap(null); setLiveMin(null); setLiveAud('all'); setLiveColour('all'); setKnownDelivery(false);
     if (!urlQ.trim()) { setLive(null); setNotice(''); setError(''); setLoading(false); return undefined; }
     let dead = false;
     setLoading(true); setError(''); setNotice(''); setGuard(null);
@@ -818,7 +907,7 @@ function SearchPage() {
         if (dead) return;
         setLive(null);
         if (['NOT_FASHION', 'MAYBE_NOT_FASHION'].includes(e.code)) setGuard({ code: e.code, message: e.message });
-        else if (['NO_KEY', 'QUOTA', 'NETWORK', 'API'].includes(e.code)) setNotice(`live search is unavailable right now (${e.message}) — showing demo catalogue instead.`);
+        else if (['NO_KEY', 'QUOTA', 'NETWORK', 'API'].includes(e.code)) setNotice('live prices are unavailable right now, so these are sample products. please try again in a bit.');
         else setError(e.message);
       })
       .finally(() => { if (!dead) setLoading(false); });
@@ -850,7 +939,7 @@ function SearchPage() {
   const resetDemo = () => { setAud('all'); setPlatform('all'); setSizes([]); setColors([]); setCap(maxP); };
 
   const liveMode = Boolean(live);
-  const liveMax = liveMode && live.results.length ? Math.ceil(Math.max(...live.results.map((p) => p.price)) / 50) * 50 : 0;
+  const liveMax = liveMode && live.results.length ? sliderMax(live.results.map((p) => p.price)) : 0;
   const liveStores = liveMode ? ['all', ...new Set(live.results.map((p) => p.store))] : [];
   const liveBrands = useMemo(() => {
     if (!liveMode) return [];
@@ -866,7 +955,7 @@ function SearchPage() {
     return ['women', 'men', 'unisex', 'kids'].filter((a) => n[a]).map((a) => [a, n[a]]);
   }, [live, liveMode]);
 
-  useEffect(() => { setShowN(PAGE); }, [live?.fetchedAt, live?.query, store, liveCap, liveMin, liveAud, knownDelivery, sort, onlySame, brand, condition, minDisc]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { setShowN(PAGE); }, [live?.fetchedAt, live?.query, liveColour, store, liveCap, liveMin, liveAud, knownDelivery, sort, onlySame, brand, condition, minDisc]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const liveAvg = useMemo(() => {
     if (!liveMode || !live.results.length) return 0;
@@ -876,17 +965,17 @@ function SearchPage() {
 
   const liveShown = useMemo(() => {
     if (!liveMode) return [];
-    const capV = liveCap ?? liveMax;
+    const capV = liveCap ?? Infinity;
     const minV = liveMin ?? 0;
     const eff = (p) => p.finalPrice ?? p.price;
     return live.results
       .filter((p) => (store === 'all' || p.store === store) && p.price <= capV && (!knownDelivery || p.delivery !== null) && (!onlySame || matchInfo(p, source, live.query)?.same)
-        && p.price >= minV && (liveAud === 'all' || audienceOf(p.title) === liveAud || (liveAud !== 'kids' && audienceOf(p.title) === 'unisex'))
+        && p.price >= minV && (liveColour === 'all' || colourOf(p.title) === liveColour) && (liveAud === 'all' || audienceOf(p.title) === liveAud || (liveAud !== 'kids' && audienceOf(p.title) === 'unisex'))
         && (brand === 'all' || brandOf(p.title) === brand) && (condition === 'all' || (condition === 'pre-owned') === Boolean(p.secondHand)) && (p.discount || 0) >= minDisc)
       .sort((a, b) => (sort === 'final' ? eff(a) - eff(b) : sort === 'price' ? a.price - b.price : sort === 'discount' ? (b.discount || 0) - (a.discount || 0)
         : sort === 'foryou' ? (fitFor(b, passport).score - fitFor(a, passport).score) || (b.dealScore - a.dealScore)
         : b.dealScore - a.dealScore));
-  }, [live, liveMode, store, liveCap, liveMin, liveAud, liveMax, knownDelivery, sort, onlySame, source, passport, brand, condition, minDisc]);
+  }, [live, liveMode, store, liveCap, liveMin, liveAud, liveColour, liveMax, knownDelivery, sort, onlySame, source, passport, brand, condition, minDisc]);
 
   const demoShown = useMemo(() => {
     const words = (notice ? urlQ : '').toLowerCase().split(/\s+/).filter(Boolean);
@@ -927,6 +1016,7 @@ function SearchPage() {
                 <small className="filternote">worked out from product names, so some items aren&apos;t labelled.</small>
               </>
             )}
+            <ColourFilter items={live.results} value={liveColour} onChange={setLiveColour} />
             <b>price range</b>
             <div className="pricebox">
               <label>min ₹<input type="number" inputMode="numeric" min="0" max={liveMax} step="50" value={liveMin ?? ''} placeholder="0"
@@ -937,9 +1027,9 @@ function SearchPage() {
             </div>
             <div className="dualrange">
               <input type="range" min="0" max={liveMax} step="50" value={Math.min(liveMin ?? 0, liveCap ?? liveMax)} onChange={(e) => setLiveMin(Math.min(Number(e.target.value), liveCap ?? liveMax))} aria-label="minimum price slider" />
-              <input type="range" min="0" max={liveMax} step="50" value={liveCap ?? liveMax} onChange={(e) => setLiveCap(Math.max(Number(e.target.value), liveMin ?? 0))} aria-label="maximum price slider" />
+              <input type="range" min="0" max={liveMax} step="50" value={liveCap ?? liveMax} onChange={(e) => { const v = Number(e.target.value); setLiveCap(v >= liveMax ? null : Math.max(v, liveMin ?? 0)); }} aria-label="maximum price slider" />
             </div>
-            <small className="filternote">{money(liveMin ?? 0)} to {money(liveCap ?? liveMax)}</small>
+            <small className="filternote">{money(liveMin ?? 0)} to {liveCap == null ? 'any price' : money(liveCap)}</small>
             {liveBrands.length > 1 && (
               <>
                 <b>brand</b>
@@ -963,8 +1053,10 @@ function SearchPage() {
             <label className="check2"><input type="checkbox" checked={knownDelivery} onChange={(e) => setKnownDelivery(e.target.checked)} /> only show known delivery cost</label>
             {source && <label className="check2"><input type="checkbox" checked={onlySame} onChange={(e) => setOnlySame(e.target.checked)} /> only “likely same item”</label>}
             <SizePicker sizes={mySizes} onSave={saveSizes} />
-            <button className="btn block" onClick={() => { setStore('all'); setLiveCap(null); setLiveMin(null); setLiveAud('all'); setKnownDelivery(false); setBrand('all'); setCondition('all'); setMinDisc(0); }}>reset</button>
+            <button className="btn block" onClick={() => { setStore('all'); setLiveCap(null); setLiveMin(null); setLiveAud('all'); setLiveColour('all'); setKnownDelivery(false); setBrand('all'); setCondition('all'); setMinDisc(0); }}>reset</button>
           </Window>
+        ) : (!urlQ && !linkParam && !photo && !notice) ? (
+          <BrowseFilters value={browse} onChange={setBrowse} items={browseItems} />
         ) : (
           <Filters f={{ aud, setAud, platform, setPlatform, sizes, colors, toggle, cap, setCap, maxP, reset: resetDemo }} />
         )}
@@ -974,10 +1066,9 @@ function SearchPage() {
               <div>
                 <h2>{urlQ ? `results for “${urlQ}”` : photo ? 'look-alikes for your photo' : linkParam ? 'scouting your link' : 'scouted today'}</h2>
                 <small>
-                  {linkParam && !urlQ ? 'check the search words, then scout' : loading ? 'scouting stores…' : `${count} ${liveMode ? 'live offers' : 'demo products'}`}
-                  {liveMode && !loading && ` · checked ${checked}${live.cached ? ' (saved, free)' : ''}`}
-                  {liveMode && !loading && live.usedToday != null && ` · ${live.usedToday} live searches today`}
-                  {liveMode && !loading && live.canRefresh && urlQ && <button type="button" className="btn tiny blue refreshbtn" disabled={refreshing} onClick={refreshPrices}>{refreshing ? 'refreshing…' : 'refresh prices (1 search)'}</button>}
+                  {linkParam && !urlQ ? 'check the search words, then scout' : loading ? 'scouting stores…' : `${count} ${liveMode ? 'offers' : 'sample products'}`}
+                  {liveMode && !loading && ` · prices checked ${checked}`}
+                  {liveMode && !loading && live.canRefresh && urlQ && <button type="button" className="btn tiny blue refreshbtn" disabled={refreshing} onClick={refreshPrices}>{refreshing ? 'refreshing…' : 'refresh prices'}</button>}
                 </small>
               </div>
               <form className="searchmini" onSubmit={submit}>
@@ -1017,7 +1108,7 @@ function SearchPage() {
                     </label>
                     <div className="row"><button className="btn" type="submit">scout this →</button><button type="button" className="btn blue" onClick={() => setParams({})}>cancel</button></div>
                     {link.source.image && <button type="button" className="btn tiny blue photobtn" onClick={() => runPhoto({ url: link.source.image, source: link.source })}>📷 find look-alikes from its photo instead</button>}
-                    <small>uses 1 live search. edit the words if they look off.</small>
+                    <small>edit the words if they look off.</small>
                   </div>
                 </form>
               )}
@@ -1051,7 +1142,7 @@ function SearchPage() {
                 <img src={photo.preview} alt="" />
                 <div>
                   <small>{photo.source ? `your link · ${photo.source.store}` : 'your photo'}</small>
-                  <b>{photo.source?.title || 'visual matches from Google Lens'}</b>
+                  <b>{photo.source?.title || 'look-alikes for your photo'}</b>
                   {sp ? <span>{money(sp)}</span> : null}
                 </div>
                 <div className="verdict">{!best ? 'no priced look-alikes found'
@@ -1072,7 +1163,7 @@ function SearchPage() {
                     <button key={s} type="button" className="chip" onClick={() => setParams({ q: s })}>⌕ {s}</button>
                   ))}
                 </div>
-                {guard.code === 'MAYBE_NOT_FASHION' && <button type="button" className="btn blue tiny" onClick={() => setParams({ q: urlQ, force: '1' })}>search anyway (uses 1 search)</button>}
+                {guard.code === 'MAYBE_NOT_FASHION' && <button type="button" className="btn blue tiny" onClick={() => setParams({ q: urlQ, force: '1' })}>search anyway</button>}
               </div>
             </Window>
           )}
@@ -1091,7 +1182,7 @@ function SearchPage() {
               )}
               <Window title="photo.exe" tone="pink" icon="📷" className="photowin">
                 <div className="photodrop" onDragOver={(e) => e.preventDefault()} onDrop={(e) => { e.preventDefault(); pickFile(e.dataTransfer.files?.[0]); }}>
-                  <p><b>search by photo</b><br />drop a picture of an outfit here, or choose one. we find look-alikes and compare prices (uses 1 live search).</p>
+                  <p><b>search by photo</b><br />drop a picture of an outfit here, or choose one. we find look-alikes and compare prices.</p>
                   <button type="button" className="btn" onClick={() => fileRef.current?.click()}>choose a photo</button>
                   <form className="photolink" onSubmit={(e) => { e.preventDefault(); const u = photoUrl.trim(); if (/^https?:\/\/\S+$/i.test(u)) runPhoto({ url: u }); else setError('Paste a full photo link starting with https://'); }}>
                     <input value={photoUrl} onChange={(e) => setPhotoUrl(e.target.value)} placeholder="or paste a link to a photo (https://…)" aria-label="link to a photo" />
@@ -1113,12 +1204,12 @@ function SearchPage() {
                   {total > showN ? (
                     <>
                       <button type="button" className="btn blue" onClick={() => setShowN((n) => n + PAGE)}>show more ({total - showN} more)</button>
-                      <small>showing {Math.min(showN, total)} of {total} · already loaded, no extra search</small>
+                      <small>showing {Math.min(showN, total)} of {total}</small>
                     </>
                   ) : urlQ && !photo && !moreState.done ? (
                     <>
                       <button type="button" className="btn" disabled={moreState.busy} onClick={findMore}>{moreState.busy ? 'scouting more stores…' : 'find more results ✦'}</button>
-                      <small>uses 1 live search · adds up to 40 more products{moreState.note ? ` · ${moreState.note}` : ''}</small>
+                      <small>{moreState.note || 'scout more stores for this search'}</small>
                     </>
                   ) : moreState.note ? <small>{moreState.note}{moreState.done ? ' · that’s everything for this search' : ''}</small> : null}
                 </div>
@@ -1142,7 +1233,7 @@ function SearchPage() {
               );
             })()
           ) : photo ? null : (!urlQ && !linkParam && !notice) ? (
-            <FeaturedBrowser />
+            <FeaturedBrowser filter={browse} onItems={setBrowseItems} />
           ) : (urlQ && guard) ? null : (
             <div className="products">{demoShown.map((p) => <ProductCard key={p.id} p={p} />)}</div>
           )}

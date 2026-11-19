@@ -1300,3 +1300,15 @@ body::before{filter:none;will-change:transform}
 
 .showmore{display:grid;justify-items:center;gap:6px;margin:6px 0 10px}
 .showmore small{opacity:.7;font-size:12px}
+
+/* chrome logo (same as the login page) in the menu bar and footer */
+.brandlogo{display:flex;align-items:center;padding:0 12px 0 4px;font-size:0}
+.brandlogo img{height:38px;width:auto;display:block;filter:drop-shadow(0 3px 4px rgba(30,31,92,.25))}
+.footlogo{height:40px;width:auto;margin-bottom:6px}
+@media(max-width:600px){.brandlogo img{height:30px}}
+
+.landinglogo{width:min(520px,80vw);height:auto;filter:drop-shadow(0 10px 12px rgba(30,31,92,.28))}
+
+.press span{color:#5c5787;-webkit-text-fill-color:#5c5787;text-shadow:0 1px 0 #fff}
+.brandlogo img{height:46px}
+@media(max-width:600px){.brandlogo img{height:34px}}
