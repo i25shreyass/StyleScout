@@ -317,3 +317,22 @@ tbody tr:hover{background:var(--pink-l)}
 @media(prefers-reduced-motion:reduce){
   *,*::before,*::after{animation:none!important;transition:none!important}
 }
+
+/* ---------- live search ---------- */
+.searchmini .btn.tiny{margin-left:4px}
+.ptitle{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;min-height:2.6em;font-size:14px}
+.productpic .noimg{height:100%;display:grid;place-items:center;color:#8a82bd;font-family:'Pixelify Sans',sans-serif}
+.productpic img{object-fit:contain;background:#fff}
+.finalline{display:flex;justify-content:space-between;gap:8px;padding:6px 8px;border:1.5px dashed var(--line);background:var(--lav-l);font-size:12px}
+.finalline b{color:var(--pink-d)}
+.finalline.unknown{background:#fff6cf;color:#6a5a00;font-weight:700;justify-content:flex-start;cursor:help}
+.tagline2{font-weight:800;color:var(--blue-d)!important}
+.banner{margin-bottom:16px;padding:10px 14px;border:2px solid var(--line);background:var(--yellow);font-weight:700;font-size:14px;box-shadow:var(--shadow)}
+.banner.err{background:#ffd0dc}
+.banner.soft{background:var(--blue-l);box-shadow:none;font-weight:600}
+.skeleton{height:440px;border:2px solid var(--line);background:linear-gradient(90deg,#f4f0ff 0%,#fff 50%,#f4f0ff 100%);background-size:200% 100%;animation:shimmer 1.2s linear infinite}
+@keyframes shimmer{to{background-position:-200% 0}}
+.check2{display:flex;align-items:center;gap:8px;font-size:13px;font-weight:700;text-transform:lowercase;margin-top:6px}
+.check2 input{accent-color:var(--pink-d);width:18px;height:18px}
+.filternote{margin:4px 0;font-size:12px;color:#6a6396;line-height:1.45}
+.disclaimer{margin:18px 0 0;font-size:12px;color:#6a6396;text-align:center}

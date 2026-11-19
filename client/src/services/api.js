@@ -1,6 +1,5 @@
 // Talks to the StyleScout Express API. Change VITE_API_URL in client/.env to override.
-// Dev: the API runs separately on port 5001. Production (Render): the same server serves the site, so use the same address.
-const BASE = import.meta.env.VITE_API_URL ?? (import.meta.env.PROD ? '' : 'http://localhost:5001');
+const BASE = import.meta.env.VITE_API_URL ?? ''; // same address in dev (Vite proxy) and on Render
 
 async function post(path, body) {
   let res;
@@ -28,3 +27,16 @@ export const verifyEmailRequest = (body) => post('/api/auth/verify-email', body)
 export const resendVerificationRequest = (body) => post('/api/auth/resend-verification', body);
 export const forgotPasswordRequest = (body) => post('/api/auth/forgot-password', body);
 export const resetPasswordRequest = (body) => post('/api/auth/reset-password', body);
+
+// Live product search. Throws Error with .code (NO_KEY, QUOTA, NETWORK, ...) on failure.
+export async function searchRequest(q) {
+  let res;
+  try {
+    res = await fetch(`${BASE}/api/search?q=${encodeURIComponent(q)}`);
+  } catch {
+    const e = new Error('Cannot reach the server.'); e.code = 'NETWORK'; throw e;
+  }
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) { const e = new Error(data.message || `Search failed (${res.status})`); e.code = data.code; throw e; }
+  return data;
+}

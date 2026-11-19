@@ -3,6 +3,7 @@ import { Routes, Route, Link, useNavigate, useParams, useSearchParams } from 're
 import { Trash2, Plus, Search, ChevronRight, Truck, Tag, Globe } from 'lucide-react';
 import { demoProducts, score } from './data';
 import Login from './pages/Login';
+import { searchRequest } from './services/api';
 import VerifyEmail from './pages/VerifyEmail';
 import ResetPassword from './pages/ResetPassword';
 import { useAuth } from './context/AuthContext';
@@ -185,27 +186,106 @@ function ProductCard({ p, currency = 'INR' }) {
   );
 }
 
+function LiveCard({ p }) {
+  const delivery = p.delivery === null ? null : p.delivery === 0 ? 'free delivery' : `+ ${money(p.delivery)} delivery`;
+  return (
+    <Window title={`${p.store.toLowerCase().replace(/\s+/g, '')}.jpg`} className="product" icon="◐">
+      <a className="productpic" href={p.url || '#'} target="_blank" rel="noreferrer">
+        {p.image ? <img src={p.image} alt={p.title} loading="lazy" /> : <div className="noimg">no image</div>}
+        {p.belowTypical >= 15 && <span className="burst">GOOD<br />DEAL</span>}
+      </a>
+      <div className="pbody">
+        <b className="ptitle" title={p.title}>{p.title}</b>
+        <div className="storeline"><strong>{p.store}</strong>{p.rating && <span>★ {p.rating}{p.reviews ? ` (${p.reviews})` : ''}</span>}</div>
+        <div className="price">
+          <strong>{money(p.price)}</strong>
+          {p.originalPrice && <s>{money(p.originalPrice)}</s>}
+          {p.discount > 0 && <mark>{p.discount}% OFF</mark>}
+        </div>
+        {delivery ? (
+          <div className="finalline"><span>{delivery}</span><b>final {money(p.finalPrice)}</b></div>
+        ) : (
+          <div className="finalline unknown" title="This store didn't share a delivery fee. The total may be higher at checkout.">delivery: check at store</div>
+        )}
+        {p.belowTypical > 0 && <small>{p.belowTypical}% below the typical price here</small>}
+        {p.secondHand && <small className="tagline2">pre-owned</small>}
+        {p.url
+          ? <a className="btn block" href={p.url} target="_blank" rel="noreferrer">view at store ↗</a>
+          : <span className="btn block blue">link unavailable</span>}
+      </div>
+    </Window>
+  );
+}
+
 function SearchPage() {
-  const [params] = useSearchParams();
+  const [params, setParams] = useSearchParams();
+  const urlQ = params.get('q') || '';
+  const [input, setInput] = useState(urlQ);
+  const [live, setLive] = useState(null);      // { results, cached, fetchedAt }
+  const [loading, setLoading] = useState(false);
+  const [notice, setNotice] = useState('');    // shown when we fall back to demo data
+  const [error, setError] = useState('');
+
+  // demo-catalogue filters (used when there's no live search)
   const maxP = useMemo(() => Math.max(...demoProducts.map((p) => p.price)), []);
-  const [q, setQ] = useState(params.get('q') || '');
   const [aud, setAud] = useState(params.get('aud') || 'all');
   const [platform, setPlatform] = useState('all');
-  const [sort, setSort] = useState('deal');
   const [sizes, setSizes] = useState([]);
   const [colors, setColors] = useState([]);
   const [cap, setCap] = useState(maxP);
+  // live filters
+  const [store, setStore] = useState('all');
+  const [liveCap, setLiveCap] = useState(null);
+  const [knownDelivery, setKnownDelivery] = useState(false);
+  const [sort, setSort] = useState('deal');
 
-  useEffect(() => { setQ(params.get('q') || ''); setAud(params.get('aud') || 'all'); }, [params]);
+  // Run a live search whenever the ?q= in the address changes.
+  useEffect(() => {
+    setInput(urlQ);
+    setAud(params.get('aud') || 'all');
+    setStore('all'); setLiveCap(null); setKnownDelivery(false);
+    if (!urlQ.trim()) { setLive(null); setNotice(''); setError(''); return undefined; }
+    let dead = false;
+    setLoading(true); setError(''); setNotice('');
+    searchRequest(urlQ)
+      .then((d) => { if (!dead) setLive(d); })
+      .catch((e) => {
+        if (dead) return;
+        setLive(null);
+        if (['NO_KEY', 'QUOTA', 'NETWORK', 'API'].includes(e.code)) setNotice(`live search is unavailable right now (${e.message}) — showing demo catalogue instead.`);
+        else setError(e.message);
+      })
+      .finally(() => { if (!dead) setLoading(false); });
+    return () => { dead = true; };
+  }, [urlQ]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const submit = (e) => {
+    e.preventDefault();
+    const q = input.trim();
+    setParams(q ? { q } : {});
+  };
 
   const toggle = (key, v) => {
     const [arr, set] = key === 'sizes' ? [sizes, setSizes] : [colors, setColors];
     set(arr.includes(v) ? arr.filter((x) => x !== v) : [...arr, v]);
   };
-  const reset = () => { setAud('all'); setPlatform('all'); setSizes([]); setColors([]); setCap(maxP); setQ(''); };
+  const resetDemo = () => { setAud('all'); setPlatform('all'); setSizes([]); setColors([]); setCap(maxP); };
 
-  const ps = useMemo(() => {
-    const words = q.toLowerCase().split(/\s+/).filter(Boolean);
+  const liveMode = Boolean(live);
+  const liveMax = liveMode && live.results.length ? Math.ceil(Math.max(...live.results.map((p) => p.price)) / 50) * 50 : 0;
+  const liveStores = liveMode ? ['all', ...new Set(live.results.map((p) => p.store))] : [];
+
+  const liveShown = useMemo(() => {
+    if (!liveMode) return [];
+    const capV = liveCap ?? liveMax;
+    const eff = (p) => p.finalPrice ?? p.price;
+    return live.results
+      .filter((p) => (store === 'all' || p.store === store) && p.price <= capV && (!knownDelivery || p.delivery !== null))
+      .sort((a, b) => (sort === 'final' ? eff(a) - eff(b) : sort === 'price' ? a.price - b.price : b.dealScore - a.dealScore));
+  }, [live, liveMode, store, liveCap, liveMax, knownDelivery, sort]);
+
+  const demoShown = useMemo(() => {
+    const words = (notice ? urlQ : '').toLowerCase().split(/\s+/).filter(Boolean);
     return demoProducts
       .filter((p) => {
         const hay = `${p.name} ${p.category} ${p.brand} ${p.platform} ${p.colors.join(' ')}`.toLowerCase();
@@ -217,31 +297,74 @@ function SearchPage() {
           && p.price <= cap;
       })
       .sort((a, b) => (sort === 'price' ? a.price - b.price : score(b) - score(a)));
-  }, [q, aud, platform, sort, sizes, colors, cap]);
+  }, [notice, urlQ, aud, platform, sizes, colors, cap, sort]);
+
+  const count = liveMode ? liveShown.length : demoShown.length;
+  const checked = liveMode ? new Date(live.fetchedAt).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' }) : '';
 
   return (
     <Page>
       <div className="searchlayout">
-        <Filters f={{ aud, setAud, platform, setPlatform, sizes, colors, toggle, cap, setCap, maxP, reset }} />
+        {liveMode ? (
+          <Window title="✦ FILTERS.exe" tone="pink" className="filters" icon="⚙">
+            <b>stores</b>
+            <div className="chips">{liveStores.map((x) => (
+              <button type="button" key={x} className={`chip${store === x ? ' on' : ''}`} aria-pressed={store === x} onClick={() => setStore(x)}>{x}</button>
+            ))}</div>
+            <b>max price <em>{money(liveCap ?? liveMax)}</em></b>
+            <input type="range" min="0" max={liveMax} step="50" value={liveCap ?? liveMax} onChange={(e) => setLiveCap(Number(e.target.value))} />
+            <label className="check2"><input type="checkbox" checked={knownDelivery} onChange={(e) => setKnownDelivery(e.target.checked)} /> only show known delivery cost</label>
+            <p className="filternote">size &amp; colour matching for live results is coming next. pick your size on the store page.</p>
+            <button className="btn block" onClick={() => { setStore('all'); setLiveCap(null); setKnownDelivery(false); }}>reset</button>
+          </Window>
+        ) : (
+          <Filters f={{ aud, setAud, platform, setPlatform, sizes, colors, toggle, cap, setCap, maxP, reset: resetDemo }} />
+        )}
         <div>
           <Window bar={false} className="resulthead">
             <div className="rh">
-              <div><h2>results for “{q || 'everything'}”</h2><small>{ps.length} matching products</small></div>
-              <div className="searchmini"><Search size={15} /><input value={q} onChange={(e) => setQ(e.target.value)} placeholder="try: denim, tee, jacket" aria-label="search products" /></div>
+              <div>
+                <h2>{urlQ ? `results for “${urlQ}”` : 'featured picks'}</h2>
+                <small>
+                  {loading ? 'scouting stores…' : `${count} ${liveMode ? 'live offers' : 'demo products'}`}
+                  {liveMode && !loading && ` · checked ${checked}${live.cached ? ' (saved)' : ''}`}
+                </small>
+              </div>
+              <form className="searchmini" onSubmit={submit}>
+                <Search size={15} />
+                <input value={input} onChange={(e) => setInput(e.target.value)} placeholder="try: black cargo pants" aria-label="search products" />
+                <button className="btn tiny" type="submit">scout</button>
+              </form>
               <select value={sort} onChange={(e) => setSort(e.target.value)} aria-label="sort">
                 <option value="deal">best deal</option>
-                <option value="price">price low → high</option>
+                {liveMode && <option value="final">lowest final price</option>}
+                <option value="price">lowest item price</option>
               </select>
             </div>
           </Window>
-          <div className="products">{ps.map((p) => <ProductCard key={p.id} p={p} />)}</div>
-          {!ps.length && (
+
+          {notice && <div className="banner">{notice}</div>}
+          {error && <div className="banner err">{error}</div>}
+          {!urlQ && <div className="banner soft">these are demo products. search above to compare live prices across stores ♡</div>}
+
+          {loading ? (
+            <div className="products">{[0, 1, 2, 3, 4, 5].map((i) => <div key={i} className="skeleton" />)}</div>
+          ) : liveMode ? (
+            <div className="products">{liveShown.map((p) => <LiveCard key={p.id} p={p} />)}</div>
+          ) : (
+            <div className="products">{demoShown.map((p) => <ProductCard key={p.id} p={p} />)}</div>
+          )}
+
+          {!loading && count === 0 && (
             <div className="popwrap">
-              <Window title="error.exe" tone="pink" popup icon="!" onClose={reset}>
-                <div className="notfound">ITEM NOT FOUND :(<small>StyleScout only accepts clothing searches/images.</small>
-                  <button className="btn blue" onClick={reset}>clear filters</button></div>
+              <Window title="error.exe" tone="pink" popup icon="!" onClose={() => setParams({})}>
+                <div className="notfound">ITEM NOT FOUND :(<small>try a simpler search, like “white sneakers” or “denim jacket”.</small>
+                  <button className="btn blue" onClick={() => setParams({})}>clear search</button></div>
               </Window>
             </div>
+          )}
+          {liveMode && !loading && count > 0 && (
+            <p className="disclaimer">prices come from Google Shopping listings for India and can change at the store. “final” = item + delivery where the store lists it; coupons and card offers aren&apos;t included yet.</p>
           )}
         </div>
       </div>
