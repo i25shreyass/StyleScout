@@ -12,6 +12,7 @@ import productRoutes from './routes/products.js';
 import wishlistRoutes from './routes/wishlist.js';
 import searchRoutes from './routes/search.js';
 import profileRoutes from './routes/profile.js';
+import alertRoutes from './routes/alerts.js';
 import historyRoutes from './routes/history.js';
 
 dotenv.config();
@@ -57,6 +58,7 @@ app.use('/api/products', productRoutes);
 app.use('/api/wishlist', wishlistRoutes);
 app.use('/api/search', searchRoutes);
 app.use('/api/profile', profileRoutes);
+app.use('/api/alerts', alertRoutes);
 
 /*
  * Price history routes.

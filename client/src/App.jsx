@@ -7,11 +7,13 @@ import { searchRequest, readLinkRequest, looksLikeUrl, looksLikeImageUrl, imageS
 import VerifyEmail from './pages/VerifyEmail';
 import WishlistPage from './pages/Wishlist';
 import SaveButton from './components/SaveButton';
+import AlertButton from './components/AlertButton';
+import AlertsPage from './pages/Alerts';
 import Passport from './pages/Passport';
 import { usePassport, fitFor, recordSearch, getHistoryRequest } from './services/passport';
 import ResetPassword from './pages/ResetPassword';
 import { useAuth } from './context/AuthContext';
-import { Window, TopNav, ToastHost, toast, Phone, Disc, Sparkle, Ticker, Footer } from './components/Ui'; 
+import { Window, TopNav, ToastHost, toast, Phone, Disc, Sparkle, Ticker, Footer } from './components/Ui';
 import CompareButton from './components/CompareButton';
 import ComparePage from './pages/Compare';
 import ProductHistory from './pages/ProductHistory';
@@ -657,6 +659,7 @@ function LiveCard({ p, match, avg, sizes, fetchedAt, query = '', fit, onImageSea
         {p.url
           ? <StoreButton p={p} />
           : <span className="btn block blue">link unavailable</span>}
+        <AlertButton product={{ ...p, url: storeHref(p) ? new URL(storeHref(p), window.location.origin).href : p.url }} query={query} />
         <StoresButton p={p} mySize={mySize} kind={kind} />
         <CompareButton product={{ ...p, url: storeHref(p) || p.url }} />
         {p.id && <Link className="btn block blue" to={`/history/${encodeURIComponent(p.id)}`}>price history ★</Link>}
@@ -1285,7 +1288,7 @@ export default function App() {
         <Route path="/compare" element={<WithNav><ComparePage /></WithNav>} />
         <Route path="/history/:productKey" element={<WithNav><ProductHistory /></WithNav>} />
         <Route path="/wishlist" element={<WishlistPage />} />
-        <Route path="/alerts" element={<Alerts />} />
+        <Route path="/alerts" element={<AlertsPage />} />
         <Route path="/profile" element={<Passport />} />
         <Route path="/passport" element={<Passport />} />
         <Route path="/admin" element={<Admin />} />
