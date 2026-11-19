@@ -92,7 +92,8 @@ async function assertPublic(u) {
 }
 
 // Fetch with manual redirects (each hop checked), an 8s timeout and a 2 MB cap.
-async function fetchPage(startUrl) {
+// json=true accepts JSON replies too (used by the size reader for Shopify product data).
+export async function fetchPage(startUrl, { json = false } = {}) {
   let u = startUrl;
   for (let hop = 0; hop < 5; hop += 1) {
     await assertPublic(u);
@@ -101,7 +102,7 @@ async function fetchPage(startUrl) {
       res = await fetch(u, {
         redirect: 'manual',
         signal: AbortSignal.timeout(8000),
-        headers: { 'User-Agent': 'Mozilla/5.0 (compatible; StyleScoutBot/1.0; college project price comparison)', Accept: 'text/html,application/xhtml+xml', 'Accept-Language': 'en-IN,en;q=0.9' },
+        headers: { 'User-Agent': 'Mozilla/5.0 (compatible; StyleScoutBot/1.0; college project price comparison)', Accept: json ? 'application/json,text/javascript' : 'text/html,application/xhtml+xml', 'Accept-Language': 'en-IN,en;q=0.9' },
       });
     } catch {
       return { finalUrl: u, html: '', status: 0 };
@@ -110,7 +111,8 @@ async function fetchPage(startUrl) {
       u = new URL(res.headers.get('location'), u);
       continue;
     }
-    if (!res.ok || !String(res.headers.get('content-type') || '').includes('html')) return { finalUrl: u, html: '', status: res.status };
+    const ctype = String(res.headers.get('content-type') || '');
+    if (!res.ok || !(ctype.includes('html') || (json && /json|javascript/.test(ctype)))) return { finalUrl: u, html: '', status: res.status };
     const reader = res.body.getReader();
     const chunks = []; let size = 0;
     while (size < 2_000_000) {

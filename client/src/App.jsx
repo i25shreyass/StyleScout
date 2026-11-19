@@ -3,15 +3,20 @@ import { Routes, Route, Link, useNavigate, useParams, useSearchParams } from 're
 import { Trash2, Plus, Search, ChevronRight, Truck, Tag, Globe, Camera } from 'lucide-react';
 import { demoProducts, score } from './data';
 import Login from './pages/Login';
-import { searchRequest, readLinkRequest, looksLikeUrl, looksLikeImageUrl, imageSearchRequest, shrinkImage, getSizesRequest, saveSizesRequest } from './services/api';
+import { searchRequest, readLinkRequest, looksLikeUrl, looksLikeImageUrl, imageSearchRequest, shrinkImage, getSizesRequest, saveSizesRequest, offersRequest, sizeStockRequest } from './services/api';
 import VerifyEmail from './pages/VerifyEmail';
 import WishlistPage from './pages/Wishlist';
 import SaveButton from './components/SaveButton';
 import AlertButton from './components/AlertButton';
 import AlertsPage from './pages/Alerts';
+import Passport from './pages/Passport';
+import { usePassport, fitFor, recordSearch, getHistoryRequest } from './services/passport';
 import ResetPassword from './pages/ResetPassword';
 import { useAuth } from './context/AuthContext';
 import { Window, TopNav, ToastHost, toast, Phone, Disc, Sparkle, Ticker, Footer } from './components/Ui';
+import CompareButton from './components/CompareButton';
+import ComparePage from './pages/Compare';
+import ProductHistory from './pages/ProductHistory';
 
 /* ---------- helpers ---------- */
 const money = (n, c = 'INR') => new Intl.NumberFormat(undefined, { style: 'currency', currency: c, maximumFractionDigits: 0 }).format(n);
@@ -29,6 +34,16 @@ const Page = ({ children, className = '' }) => (
   <>
     <TopNav />
     <main className={`page ${className}`}>{children}</main>
+    <Ticker />
+    <Footer />
+  </>
+);
+
+// Adds the site menu, ticker and footer around pages that bring their own <main>.
+const WithNav = ({ children }) => (
+  <>
+    <TopNav />
+    {children}
     <Ticker />
     <Footer />
   </>
@@ -286,10 +301,100 @@ function StoreButton({ p }) {
   return <a className="btn block" href={href} target="_blank" rel="noopener noreferrer">view at store ↗</a>;
 }
 
-function LiveCard({ p, match, avg, sizes, fetchedAt, query = '' }) {
+/* ---------- Sprint 6: all stores for this exact item ---------- */
+const SIZE_LABEL = { in: ['in stock', 'ok'], out: ['sold out', 'bad'], 'not offered': ['not offered', 'bad'], unknown: ['check at store', 'unknown'] };
+
+function StoresPanel({ p, mySize, kind, onClose }) {
+  const [state, setState] = useState({ loading: true });
+  const [stock, setStock] = useState({});           // url -> 'in' | 'out' | 'not offered' | 'unknown' | 'loading'
+  useEffect(() => {
+    let dead = false;
+    offersRequest({ productId: p.id, token: p.token })
+      .then((d) => { if (!dead) setState(d); })
+      .catch((e) => { if (!dead) setState({ error: e.message }); });
+    return () => { dead = true; };
+  }, [p.id, p.token]);
+
+  // Check size stock on each store page, 3 at a time (free).
+  useEffect(() => {
+    if (!state.offers?.length || !mySize) return undefined;
+    let dead = false;
+    const urls = state.offers.map((o) => o.url);
+    setStock(Object.fromEntries(urls.map((u) => [u, 'loading'])));
+    (async () => {
+      for (let i = 0; i < urls.length; i += 3) {
+        const part = await Promise.all(urls.slice(i, i + 3).map((u) => sizeStockRequest(u, mySize).then((d) => [u, d.mine]).catch(() => [u, 'unknown'])));
+        if (dead) return;
+        setStock((s) => ({ ...s, ...Object.fromEntries(part) }));
+      }
+    })();
+    return () => { dead = true; };
+  }, [state.offers, mySize]);
+
+  const offers = state.offers || [];
+  const best = offers.find((o) => o.youPay !== null && (!mySize || stock[o.url] !== 'out')) || null;
+  return (
+    <div className="popwrap storespop" role="dialog" aria-label="all stores for this item" onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}>
+      <Window title="all_stores.exe" tone="pink" icon="⇄" popup onClose={onClose}>
+        <div className="storeshead">
+          {p.image && <img src={p.image} alt="" />}
+          <div>
+            <b>{p.title}</b>
+            <small>{mySize ? <>your {kind} size: <b>{mySize}</b></> : <>set your {kind} size in filters to check stock</>}</small>
+          </div>
+        </div>
+        {state.loading ? <p className="lg-msg">finding every store for this item… (uses 1 search the first time)</p>
+          : state.error ? <p className="lg-msg">{state.error}</p>
+          : !offers.length ? <p className="lg-msg">no other stores found for this exact item.</p>
+          : (
+            <>
+              {best && <p className="storesverdict">lowest you pay{mySize ? ' in your size' : ''}: <b>{money(best.youPay)}</b> at {best.store}</p>}
+              <div className="storestable" role="table">
+                <div className="srow shead" role="row">
+                  <span>store</span><span>item</span><span>delivery</span><span>you pay</span>{mySize && <span>size {mySize}</span>}<span>returns</span><span />
+                </div>
+                {offers.map((o) => {
+                  const st = SIZE_LABEL[stock[o.url]] || (stock[o.url] === 'loading' ? ['checking…', 'unknown'] : null);
+                  return (
+                    <div className={`srow${best && o.url === best.url ? ' best' : ''}`} role="row" key={o.url}>
+                      <span><b>{o.store}</b>{o.rating ? <small>★ {o.rating}{o.reviews ? ` (${o.reviews})` : ''}</small> : null}</span>
+                      <span>{money(o.price)}{o.originalPrice && <s>{money(o.originalPrice)}</s>}</span>
+                      <span>{o.delivery === null ? <em>check at store</em> : o.delivery === 0 ? 'free' : money(o.delivery)}</span>
+                      <span>{o.youPay !== null ? <><b>{money(o.youPay)}</b><small>{o.verified ? 'total from store' : 'estimated'}</small></> : <em>item + delivery</em>}</span>
+                      {mySize && <span className={`stock ${st?.[1] || 'unknown'}`}>{st?.[0] || 'check at store'}</span>}
+                      <span className="returns">{o.returns || <em>see store</em>}</span>
+                      <span><a className="btn tiny" href={o.url} target="_blank" rel="noopener noreferrer">visit ↗</a></span>
+                    </div>
+                  );
+                })}
+              </div>
+              <p className="disclaimer">{offers.length} stores · checked {ago(state.fetchedAt)}{state.cached ? ' (saved, free)' : ''}. size stock is read from the store&apos;s own page where it&apos;s shared; coupons and card offers aren&apos;t included.</p>
+            </>
+          )}
+      </Window>
+    </div>
+  );
+}
+
+function StoresButton({ p, mySize, kind }) {
+  const [open, setOpen] = useState(false);
+  if (!p.id?.startsWith('g-') && !p.token) return null;
+  return (
+    <>
+      <button type="button" className="btn block storesbtn" onClick={() => setOpen(true)}>⇄ all stores for this item</button>
+      {open && <StoresPanel p={p} mySize={mySize} kind={kind} onClose={() => setOpen(false)} />}
+    </>
+  );
+}
+
+function LiveCard({ p, match, avg, sizes, fetchedAt, query = '', fit }) {
   const eff = p.finalPrice ?? p.price;
   const below = avg ? Math.round(avg - eff) : 0;
-  const [kind, mySize] = sizeFor(p.title, sizes || EMPTY_SIZES);
+  const [kind, mySize] = sizeFor(
+    p.title,
+    sizes || EMPTY_SIZES
+  );
+
   return (
     <Window title={`${p.store.toLowerCase().replace(/\s+/g, '')}.jpg`} className="product" icon="◐">
       <div className="picwrap">
@@ -302,31 +407,95 @@ function LiveCard({ p, match, avg, sizes, fetchedAt, query = '' }) {
       <SaveButton product={{ ...p, url: storeHref(p) || p.url }} query={query} />
       </div>
       <div className="pbody">
-        <b className="ptitle" title={p.title}>{p.title}</b>
-        <div className="storeline"><strong>{p.store}</strong>{p.rating && <span>★ {p.rating}{p.reviews ? ` (${p.reviews})` : ''}</span>}</div>
+        <b
+          className="ptitle"
+          title={p.title}
+        >
+          {p.title}
+        </b>
+
+        <div className="storeline">
+          <strong>{p.store}</strong>
+
+          {p.rating && (
+            <span>
+              ★ {p.rating}
+              {p.reviews
+                ? ` (${p.reviews})`
+                : ''}
+            </span>
+          )}
+        </div>
+
         {p.finalPrice !== null ? (
           <div className="finalbig">
             <small>you pay</small>
-            <strong>{money(p.finalPrice)}</strong>
-            <span>{money(p.price)} item {p.delivery === 0 ? '+ free delivery' : `+ ${money(p.delivery)} delivery`}</span>
+
+            <strong>
+              {money(p.finalPrice)}
+            </strong>
+
+            <span>
+              {money(p.price)} item{' '}
+              {p.delivery === 0
+                ? '+ free delivery'
+                : `+ ${money(
+                    p.delivery
+                  )} delivery`}
+            </span>
           </div>
         ) : (
-          <div className="finalbig unknown" title="This store didn't share a delivery fee. The total may be higher at checkout.">
+          <div
+            className="finalbig unknown"
+            title="This store didn't share a delivery fee. The total may be higher at checkout."
+          >
             <small>item price</small>
-            <strong>{money(p.price)}</strong>
-            <span>+ delivery: check at store</span>
+
+            <strong>
+              {money(p.price)}
+            </strong>
+
+            <span>
+              + delivery: check at store
+            </span>
           </div>
         )}
+
         <div className="price small">
-          {p.originalPrice && <s>{money(p.originalPrice)}</s>}
-          {p.discount > 0 && <mark>{p.discount}% OFF</mark>}
+          {p.originalPrice && (
+            <s>
+              {money(p.originalPrice)}
+            </s>
+          )}
+
+          {p.discount > 0 && (
+            <mark>
+              {p.discount}% OFF
+            </mark>
+          )}
         </div>
+
         <div className="badges">
-          {below >= 50 && <span className="badge pink">{money(below)} below average</span>}
-          {p.lowestSeen && <span className="badge blue">lowest we&apos;ve seen</span>}
-          {p.droppedBy > 0 && <span className="badge green">dropped {money(p.droppedBy)}</span>}
+          {below >= 50 && (
+            <span className="badge pink">
+              {money(below)} below average
+            </span>
+          )}
+
+          {p.lowestSeen && (
+            <span className="badge blue">
+              lowest we've seen
+            </span>
+          )}
+
+          {p.droppedBy > 0 && (
+            <span className="badge green">
+              dropped {money(p.droppedBy)}
+            </span>
+          )}
         </div>
         {match?.saving > 0 && <small className="saving">₹{match.saving.toLocaleString('en-IN')} cheaper than {match.hideTag ? 'your item' : 'your link'}</small>}
+        {fit?.ticks?.length > 0 && <ul className="fortick">{fit.ticks.map((t) => <li key={t}>✓ {t}</li>)}</ul>}
         <small className="sizeline">{mySize ? <>your size: <b>{mySize}</b> · select it at the store</> : <>set your {kind} size in filters for reminders</>}</small>
         {fetchedAt && <small className="checked">checked {ago(fetchedAt)}</small>}
         {p.secondHand && <small className="tagline2">pre-owned</small>}
@@ -334,13 +503,22 @@ function LiveCard({ p, match, avg, sizes, fetchedAt, query = '' }) {
           ? <StoreButton p={p} />
           : <span className="btn block blue">link unavailable</span>}
         <AlertButton product={p} query={query} />
+        <StoresButton p={p} mySize={mySize} kind={kind} />
+        <CompareButton product={{ ...p, url: storeHref(p) || p.url }} />
+        {p.id && <Link className="btn block blue" to={`/history/${encodeURIComponent(p.id)}`}>price history ★</Link>}
       </div>
     </Window>
   );
 }
-
 function SearchPage() {
   const [params, setParams] = useSearchParams();
+  const { token } = useAuth();
+  const passport = usePassport()?.passport || null;
+  const [recent, setRecent] = useState([]);
+  useEffect(() => {
+    if (!token) { setRecent([]); return; }
+    getHistoryRequest(token).then((h) => setRecent((h || []).filter((x) => x.kind === 'text').slice(0, 6))).catch(() => setRecent([]));
+  }, [token]);
   const urlQ = params.get('q') || '';
   const linkParam = params.get('link') || '';
   const [input, setInput] = useState(urlQ || linkParam);
@@ -398,7 +576,9 @@ function SearchPage() {
     setLoading(true);
     try {
       const blob = file ? await shrinkImage(file) : null;
-      setLive(await imageSearchRequest({ blob, url }));
+      const d = await imageSearchRequest({ blob, url });
+      setLive(d);
+      recordSearch(token, { query: source?.title ? `photo of ${source.title}`.slice(0, 120) : 'photo search', kind: 'photo', results: d.results.length });
     } catch (e) {
       setError(e.message);
     } finally {
@@ -436,7 +616,13 @@ function SearchPage() {
     let dead = false;
     setLoading(true); setError(''); setNotice('');
     searchRequest(urlQ)
-      .then((d) => { if (!dead) setLive(d); })
+      .then((d) => {
+        if (dead) return;
+        setLive(d);
+        let fromLink = null;
+        try { const s = JSON.parse(sessionStorage.getItem(LINK_KEY) || 'null'); if (s?.query === normQ(urlQ)) fromLink = s.source?.url; } catch { /* ignore */ }
+        recordSearch(token, fromLink ? { query: urlQ, kind: 'link', link: fromLink, results: d.results.length } : { query: urlQ, kind: 'text', results: d.results.length });
+      })
       .catch((e) => {
         if (dead) return;
         setLive(null);
@@ -478,8 +664,10 @@ function SearchPage() {
     const eff = (p) => p.finalPrice ?? p.price;
     return live.results
       .filter((p) => (store === 'all' || p.store === store) && p.price <= capV && (!knownDelivery || p.delivery !== null) && (!onlySame || matchInfo(p, source, live.query)?.same))
-      .sort((a, b) => (sort === 'final' ? eff(a) - eff(b) : sort === 'price' ? a.price - b.price : b.dealScore - a.dealScore));
-  }, [live, liveMode, store, liveCap, liveMax, knownDelivery, sort, onlySame, source]);
+      .sort((a, b) => (sort === 'final' ? eff(a) - eff(b) : sort === 'price' ? a.price - b.price
+        : sort === 'foryou' ? (fitFor(b, passport).score - fitFor(a, passport).score) || (b.dealScore - a.dealScore)
+        : b.dealScore - a.dealScore));
+  }, [live, liveMode, store, liveCap, liveMax, knownDelivery, sort, onlySame, source, passport]);
 
   const demoShown = useMemo(() => {
     const words = (notice ? urlQ : '').toLowerCase().split(/\s+/).filter(Boolean);
@@ -539,6 +727,7 @@ function SearchPage() {
               </form>
               <select value={sort} onChange={(e) => setSort(e.target.value)} aria-label="sort">
                 <option value="deal">best deal</option>
+                {liveMode && passport && <option value="foryou">for you ♡</option>}
                 {liveMode && <option value="final">lowest final price</option>}
                 <option value="price">lowest item price</option>
               </select>
@@ -614,6 +803,16 @@ function SearchPage() {
           {!urlQ && !linkParam && !photo && (
             <>
               <div className="banner soft">these are demo products. search above to compare live prices across stores ♡</div>
+              {recent.length > 0 && (
+                <div className="recentbar">
+                  <b>your recent searches</b>
+                  {recent.map((h) => <button key={h.id} type="button" className="chip" onClick={() => setParams({ q: h.query })}>⌕ {h.query}</button>)}
+                  <Link className="uline" to="/passport?tab=history">see all</Link>
+                </div>
+              )}
+              {token && !passport?.budget && !passport?.styles?.length && (
+                <div className="banner">✦ fill in your <Link className="uline" to="/passport">style passport</Link> and we&apos;ll tick offers that fit your budget, style and favourite stores.</div>
+              )}
               <Window title="photo.exe" tone="pink" icon="📷" className="photowin">
                 <div className="photodrop" onDragOver={(e) => e.preventDefault()} onDrop={(e) => { e.preventDefault(); pickFile(e.dataTransfer.files?.[0]); }}>
                   <p><b>search by photo</b><br />drop a picture of an outfit here, or choose one. we find look-alikes and compare prices (uses 1 live search).</p>
@@ -631,7 +830,7 @@ function SearchPage() {
           {linkParam && !urlQ ? null : loading ? (
             <div className="products">{[0, 1, 2, 3, 4, 5].map((i) => <div key={i} className="skeleton" />)}</div>
           ) : liveMode ? (
-            <div className="products">{liveShown.map((p) => <LiveCard key={p.id} p={p} avg={liveAvg} sizes={mySizes} fetchedAt={live.fetchedAt} query={live.query} match={photo ? photoMatch(p, photo.source) : matchInfo(p, source, live.query)} />)}</div>
+            <div className="products">{liveShown.map((p) => <LiveCard key={p.id} p={p} fit={fitFor(p, passport)} avg={liveAvg} sizes={mySizes} fetchedAt={live.fetchedAt} query={live.query} match={photo ? photoMatch(p, photo.source) : matchInfo(p, source, live.query)} />)}</div>
           ) : photo ? null : (
             <div className="products">{demoShown.map((p) => <ProductCard key={p.id} p={p} />)}</div>
           )}
@@ -818,10 +1017,12 @@ export default function App() {
         <Route path="/home" element={<Home />} />
         <Route path="/search" element={<SearchPage />} />
         <Route path="/product/:id" element={<ProductDetails />} />
-        <Route path="/compare" element={<Compare />} />
+        <Route path="/compare" element={<WithNav><ComparePage /></WithNav>} />
+        <Route path="/history/:productKey" element={<WithNav><ProductHistory /></WithNav>} />
         <Route path="/wishlist" element={<WishlistPage />} />
         <Route path="/alerts" element={<AlertsPage />} />
-        <Route path="/profile" element={<Profile />} />
+        <Route path="/profile" element={<Passport />} />
+        <Route path="/passport" element={<Passport />} />
         <Route path="/admin" element={<Admin />} />
         <Route path="*" element={<Landing />} />
       </Routes>

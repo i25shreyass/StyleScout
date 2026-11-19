@@ -2,8 +2,9 @@ import { Router } from 'express';
 import rateLimit from 'express-rate-limit';
 import multer from 'multer';
 import crypto from 'crypto';
-import { searchProducts, searchByImage, findStoreLink, storeDebug, SearchError } from '../services/shopping.js';
+import { searchProducts, searchByImage, findStoreLink, getSellers, SearchError } from '../services/shopping.js';
 import { readProductLink } from '../services/linkReader.js';
+import { readSizes, sizeStatus } from '../services/sizeReader.js';
 
 const r = Router();
 
@@ -105,7 +106,7 @@ r.get('/offer', async (req, res) => {
   try {
     const url = await findStoreLink({ productId: productId || null, token, store });
     if (!url) console.log('[store-link] no direct link, sending Google page');
-    res.json({ url: url || fallback, direct: Boolean(url), ...(req.query.debug === '1' ? { debug: storeDebug } : {}) });
+    res.json({ url: url || fallback, direct: Boolean(url) });
   } catch (e) {
     console.log('[store-link] error:', e.message);
     if (e instanceof SearchError && e.code === 'QUOTA') return res.json({ url: fallback, direct: false, note: 'out of searches today' });
@@ -128,6 +129,42 @@ r.get('/go', async (req, res) => {
   try { url = await findStoreLink({ productId: productId || null, token, store }); }
   catch (e) { console.log('[store-link] error:', e.message); }
   res.redirect(302, url && /^https?:\/\//i.test(url) ? url : fallback);
+});
+
+// GET /api/search/offers?productId=g-123&token=...  -> every store selling this exact product
+// Sorted by what you pay. First time = 1 search, then saved 24 h (shared with "view at store").
+r.get('/offers', async (req, res) => {
+  const rawId = String(req.query.productId || '');
+  const productId = rawId.startsWith('g-') ? rawId.slice(2) : '';
+  const token = String(req.query.token || '').slice(0, 8000) || null;
+  if (!productId && !token) return res.status(400).json({ message: 'This offer has no product details to compare.', code: 'NO_PRODUCT' });
+  try {
+    const { sellers, cached, fetchedAt } = await getSellers({ productId: productId || null, token });
+    const offers = [...sellers].sort((a, b) => (a.youPay ?? a.price + 1e7) - (b.youPay ?? b.price + 1e7));
+    res.json({ offers, cached, fetchedAt });
+  } catch (e) {
+    if (e instanceof SearchError) return res.status(e.status).json({ message: e.message, code: e.code });
+    console.error('Offers lookup failed:', e);
+    res.status(500).json({ message: 'Could not load the stores for this item.' });
+  }
+});
+
+// GET /api/search/sizes?url=<store product page>&size=M   (free: reads the store page, no search quota)
+// -> { status: 'ok'|'unknown', sizes: [{ size, available, price }], mine: 'in'|'out'|'not offered'|'unknown' }
+r.get('/sizes', async (req, res) => {
+  const url = String(req.query.url || '');
+  let host = '';
+  try { host = new URL(url).hostname; } catch { /* bad link */ }
+  if (!/^https?:\/\//i.test(url) || !host || /(^|\.)google\./i.test(host)) {
+    return res.json({ status: 'unknown', reason: 'no store page for this offer', sizes: [], mine: 'unknown' });
+  }
+  try {
+    const data = await readSizes(url);
+    res.json({ ...data, mine: sizeStatus(data, req.query.size) });
+  } catch (e) {
+    console.warn('Size read failed:', e.message);
+    res.json({ status: 'unknown', reason: 'store page could not be read', sizes: [], mine: 'unknown' });
+  }
 });
 
 export default r;

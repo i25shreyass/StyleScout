@@ -2,10 +2,20 @@ import React, { useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { forgotPasswordRequest, resendVerificationRequest } from '../services/api';
-import { Window, TopNav, Phone, Disc, Sparkle, Ticker, Footer } from '../components/Ui';
 import Captcha from '../components/Captcha';
+import { getProfileRequest, setPassportCache, updateProfileRequest } from '../services/passport';
+import PassportFields, { EMPTY_PASSPORT, EMPTY_SIZES, toPayload } from '../components/PassportFields';
+import './Passport.css';
+
+// Answers from the one-time personalise step are kept here until the first sign-in
+// (the account can't be written to before the email is verified).
+const PENDING = 'ss_pending_passport';
+import logo from '../assets/intro/stylescout-chrome-logo.webp';
+import camera from '../assets/intro/y2k-camera.webp';
+import stickers from '../assets/intro/y2k-stickers.webp';
 import './Login.css';
 
+// The "member_login.exe" intro page: log in, sign up, forgot password, or continue as guest.
 export default function Login() {
   const { user, login, signup, logout } = useAuth();
   const nav = useNavigate();
@@ -16,12 +26,14 @@ export default function Login() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPw, setShowPw] = useState(false);
+  const [remember, setRemember] = useState(true);
   const [captchaToken, setCaptchaToken] = useState(null);
   const [error, setError] = useState('');
   const [info, setInfo] = useState('');
   const [unverified, setUnverified] = useState(false);
   const [sent, setSent] = useState(null); // { type: 'verify' | 'reset', email, emailSent? }
   const [busy, setBusy] = useState(false);
+  const [prefs, setPrefs] = useState({ sizes: EMPTY_SIZES, passport: EMPTY_PASSPORT, brandText: '' });
 
   const switchMode = (m) => {
     setMode(m);
@@ -45,12 +57,22 @@ export default function Login() {
     try {
       if (mode === 'signup') {
         const d = await signup(name, email, password, captchaToken);
-        setSent({ type: 'verify', email: email.trim().toLowerCase(), emailSent: d.emailSent !== false });
+        setSent({ type: 'verify', email: email.trim().toLowerCase(), emailSent: d.emailSent !== false, step: 'personalise' });
       } else if (mode === 'forgot') {
         await forgotPasswordRequest({ email: email.trim().toLowerCase(), captchaToken });
         setSent({ type: 'reset', email: email.trim().toLowerCase() });
       } else {
-        await login(email, password, captchaToken);
+        const session = await login(email, password, captchaToken, remember);
+        // first sign-in after registering: save the answers from the personalise step
+        try {
+          const pending = JSON.parse(localStorage.getItem(PENDING) || 'null');
+          if (pending && pending.email === email.trim().toLowerCase()) {
+            setPassportCache(await updateProfileRequest(session.token, { sizes: pending.sizes, passport: { ...pending.passport, onboarded: true } }));
+            localStorage.removeItem(PENDING);
+          } else {
+            setPassportCache(await getProfileRequest(session.token));
+          }
+        } catch { /* the site works without a passport */ }
         nav('/home');
       }
     } catch (err) {
@@ -60,6 +82,17 @@ export default function Login() {
       setBusy(false);
       captchaRef.current?.reset(); // a CAPTCHA token can only be used once
     }
+  };
+
+  const finishPersonalise = (save) => {
+    if (save) {
+      const payload = toPayload(prefs);
+      localStorage.setItem(PENDING, JSON.stringify({ email: sent.email, ...payload, passport: { ...payload.passport, onboarded: true } }));
+      try { localStorage.setItem('ss_sizes', JSON.stringify(payload.sizes)); } catch { /* ignore */ }
+    } else {
+      localStorage.setItem(PENDING, JSON.stringify({ email: sent.email, sizes: EMPTY_SIZES, passport: { onboarded: true } }));
+    }
+    setSent((s) => ({ ...s, step: 'done', savedPrefs: save }));
   };
 
   const resend = async (to) => {
@@ -72,104 +105,158 @@ export default function Login() {
     }
   };
 
-  const title = user ? 'welcome back' : sent ? 'check your email' : mode === 'login' ? 'log in' : mode === 'signup' ? 'sign up' : 'forgot password';
-  const headline = user ? 'hi!' : sent ? 'check your inbox' : mode === 'login' ? 'welcome back' : mode === 'signup' ? 'join the club' : 'oops, forgot?';
-  const sub = user
-    ? `you're signed in as ${user.name}`
-    : sent ? '' : mode === 'forgot' ? "enter your email and we'll send you a reset link ♡" : 'log in to save your wishlist and price alerts ♡';
+  const personalising = sent?.step === 'personalise';
+  const win = personalising ? 'personalise.exe' : user ? 'member_area.exe' : sent ? 'mailbox.exe' : mode === 'signup' ? 'new_member.exe' : mode === 'forgot' ? 'password_help.exe' : 'member_login.exe';
+  const eyebrow = personalising ? 'ACCOUNT CREATED · OPTIONAL · 30 SECONDS' : user ? 'HELLO AGAIN' : sent ? 'ALMOST THERE' : mode === 'signup' ? 'NEW HERE?' : mode === 'forgot' ? 'NO WORRIES' : 'WELCOME BACK';
+  const heading = personalising ? 'Personalise StyleScout ♡' : user ? `Hi, ${user.name?.split(' ')[0] || 'scout'}!` : sent ? 'Check your inbox.' : mode === 'signup' ? 'Join the scouts.' : mode === 'forgot' ? 'Forgot password?' : 'Sign in to scout.';
+  const blurb = personalising
+    ? 'Tell us what you shop for and we’ll tick offers that fit your size, budget and style. Everything is optional and you can change it later in your profile.'
+    : user
+    ? `You're signed in as ${user.email || user.name}.`
+    : sent ? ''
+    : mode === 'signup' ? 'Create an account to save your sizes, wishlist and price alerts.'
+    : mode === 'forgot' ? "Enter your email and we'll send you a reset link."
+    : 'Save your finds, watch prices and get alerts when your favourites go on sale.';
 
   return (
-    <>
-      <TopNav />
-      <main className="loginpage">
-        <Phone className="lg-phone" />
-        <Disc className="lg-disc" />
-        <Sparkle className="s1" /><Sparkle className="s2" /><Sparkle className="s3" />
+    <main className="ssi">
+      <div className="ssi-holo" aria-hidden="true" />
+      <div className="ssi-deco" aria-hidden="true">
+        <div className="ssi-cd ssi-cd1"><span /></div>
+        <div className="ssi-cd ssi-cd2"><span /></div>
+        <img className="ssi-camera" src={camera} alt="" />
+        <img className="ssi-stickers" src={stickers} alt="" />
+        <span className="ssi-star ssi-star1">✦</span>
+        <span className="ssi-star ssi-star2">✦</span>
+        <span className="ssi-star ssi-star3">✧</span>
+      </div>
 
-        {/* A log-in dialog is a pop-up, so it gets window buttons. The × takes you home. */}
-        <Window title={title} tone="pink" popup icon="♡" className="loginwin" onClose={() => nav('/home')}>
-          <div className="lg-head">
-            <div className="bubble big">{headline}</div>
-            {sub && <p>{sub}</p>}
-          </div>
+      <section className="ssi-entry" aria-labelledby="ssi-brand">
+        <header className="ssi-brand">
+          <img id="ssi-brand" src={logo} alt="StyleScout" />
+          <p>find it. compare it. wear it.</p>
+        </header>
 
-          {user ? (
-            <div className="lg-signed">
-              <button className="btn block" onClick={() => nav('/home')}>continue →</button>
-              <button className="btn blue block" onClick={logout}>log out</button>
+        <section className="ssi-win">
+          <header className="ssi-bar">
+            <div className="ssi-title"><span>✦</span> {win}</div>
+            <div className="ssi-ctl">
+              <span aria-hidden="true">−</span>
+              <span aria-hidden="true">□</span>
+              <button type="button" aria-label="close and go home" onClick={() => nav('/home')}>×</button>
             </div>
-          ) : sent ? (
-            <div className="lg-signed">
-              {sent.type === 'verify' ? (
-                <>
-                  <p className="lg-msg">
-                    {sent.emailSent
-                      ? <>we sent a verification link to <b>{sent.email}</b>. click it to activate your account, then log in. the link works for 24 hours.</>
-                      : <>your account was created, but we couldn&apos;t send the email right now. tap resend below to try again.</>}
-                  </p>
-                  {info && <div className="lg-info" role="status">{info}</div>}
-                  {error && <div className="lg-error" role="alert">{error}</div>}
-                  <button className="btn blue block" onClick={() => resend(sent.email)}>resend email</button>
-                </>
-              ) : (
-                <p className="lg-msg">if <b>{sent.email}</b> has an account, a reset link is on its way. it works for 1 hour. check your spam folder too.</p>
-              )}
-              <button className="btn block" onClick={() => { setSent(null); switchMode('login'); }}>back to log in</button>
+          </header>
+
+          <div className="ssi-body">
+            <div className="ssi-welcome">
+              <p className="ssi-eyebrow">{eyebrow}</p>
+              <h1>{heading}</h1>
+              {blurb && <p>{blurb}</p>}
             </div>
-          ) : (
-            <>
-              {mode !== 'forgot' && (
-                <div className="lg-tabs" role="tablist">
-                  <button type="button" role="tab" aria-selected={mode === 'login'} className={mode === 'login' ? 'on' : ''} onClick={() => switchMode('login')}>log in</button>
-                  <button type="button" role="tab" aria-selected={mode === 'signup'} className={mode === 'signup' ? 'on' : ''} onClick={() => switchMode('signup')}>sign up</button>
-                </div>
-              )}
 
-              <form onSubmit={submit} noValidate>
-                {mode === 'signup' && (
-                  <label className="lg-field">
-                    <span>name</span>
-                    <input value={name} onChange={(e) => setName(e.target.value)} autoComplete="name" placeholder="your name" />
-                  </label>
-                )}
-                <label className="lg-field">
-                  <span>email</span>
-                  <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} autoComplete="email" placeholder="you@email.com" />
-                </label>
-                {mode !== 'forgot' && (
-                  <label className="lg-field">
-                    <span>password</span>
-                    <div className="lg-pw">
-                      <input type={showPw ? 'text' : 'password'} value={password} onChange={(e) => setPassword(e.target.value)} autoComplete={mode === 'login' ? 'current-password' : 'new-password'} placeholder="at least 8 characters" />
-                      <button type="button" onClick={() => setShowPw((s) => !s)}>{showPw ? 'hide' : 'show'}</button>
-                    </div>
-                  </label>
-                )}
-                {mode === 'login' && (
-                  <button type="button" className="lg-link" onClick={() => switchMode('forgot')}>forgot password?</button>
-                )}
-
-                <Captcha ref={captchaRef} onChange={setCaptchaToken} />
-
-                {error && <div className="lg-error" role="alert">{error}</div>}
-                {info && <div className="lg-info" role="status">{info}</div>}
-                {unverified && (
-                  <button type="button" className="btn blue block lg-resend" onClick={() => resend(email.trim().toLowerCase())}>resend verification email</button>
-                )}
-
-                <button className="btn block" type="submit" disabled={busy}>
-                  {busy ? 'please wait…' : mode === 'login' ? 'enter stylescout →' : mode === 'signup' ? 'create account →' : 'send reset link →'}
-                </button>
-                {mode === 'forgot' && (
-                  <button type="button" className="lg-link center" onClick={() => switchMode('login')}>← back to log in</button>
-                )}
+            {user ? (
+              <div className="ssi-stack">
+                <button className="ssi-primary" type="button" onClick={() => nav('/home')}><span>continue</span><b>→</b></button>
+                <button className="ssi-guest" type="button" onClick={logout}>log out</button>
+              </div>
+            ) : personalising ? (
+              <form className="ssi-stack" onSubmit={(e) => { e.preventDefault(); finishPersonalise(true); }}>
+                <PassportFields skin="holo" showAge={false} value={prefs} onChange={setPrefs} />
+                <button className="ssi-primary" type="submit"><span>save my style</span><b>→</b></button>
+                <button type="button" className="ssi-link ssi-center" onClick={() => finishPersonalise(false)}>skip for now</button>
               </form>
-            </>
-          )}
-        </Window>
-      </main>
-      <Ticker />
-      <Footer />
-    </>
+            ) : sent ? (
+              <div className="ssi-stack">
+                {sent.savedPrefs && <p className="ssi-info">your style is saved ♡ it’ll be added to your account when you first sign in.</p>}
+                {sent.type === 'verify' ? (
+                  <>
+                    <p className="ssi-note">
+                      {sent.emailSent
+                        ? <>We sent a verification link to <b>{sent.email}</b>. Click it to activate your account, then sign in. The link works for 24 hours.</>
+                        : <>Your account was created, but we couldn&apos;t send the email right now. Tap resend to try again.</>}
+                    </p>
+                    {info && <p className="ssi-info" role="status">{info}</p>}
+                    {error && <p className="ssi-msg" role="alert">{error}</p>}
+                    <button className="ssi-guest" type="button" onClick={() => resend(sent.email)}>resend email ↻</button>
+                  </>
+                ) : (
+                  <p className="ssi-note">If <b>{sent.email}</b> has an account, a reset link is on its way. It works for 1 hour. Check your spam folder too.</p>
+                )}
+                <button className="ssi-primary" type="button" onClick={() => { setSent(null); switchMode('login'); }}><span>back to sign in</span><b>→</b></button>
+              </div>
+            ) : (
+              <>
+                {mode !== 'forgot' && (
+                  <div className="ssi-tabs" role="tablist">
+                    <button type="button" role="tab" aria-selected={mode === 'login'} className={mode === 'login' ? 'on' : ''} onClick={() => switchMode('login')}>sign in</button>
+                    <button type="button" role="tab" aria-selected={mode === 'signup'} className={mode === 'signup' ? 'on' : ''} onClick={() => switchMode('signup')}>create account</button>
+                  </div>
+                )}
+
+                <form className="ssi-form" onSubmit={submit} noValidate>
+                  {mode === 'signup' && (
+                    <>
+                      <label htmlFor="ssi-name">Name</label>
+                      <div className="ssi-field">
+                        <span aria-hidden="true">☺</span>
+                        <input id="ssi-name" value={name} onChange={(e) => setName(e.target.value)} autoComplete="name" placeholder="your name" />
+                      </div>
+                    </>
+                  )}
+
+                  <label htmlFor="ssi-email">Email</label>
+                  <div className="ssi-field">
+                    <span aria-hidden="true">✉</span>
+                    <input id="ssi-email" type="email" value={email} onChange={(e) => setEmail(e.target.value)} autoComplete="email" placeholder="you@example.com" />
+                  </div>
+
+                  {mode !== 'forgot' && (
+                    <>
+                      <label htmlFor="ssi-pw">Password</label>
+                      <div className="ssi-field">
+                        <span aria-hidden="true">◆</span>
+                        <input id="ssi-pw" type={showPw ? 'text' : 'password'} value={password} onChange={(e) => setPassword(e.target.value)}
+                          autoComplete={mode === 'login' ? 'current-password' : 'new-password'} placeholder={mode === 'signup' ? 'at least 8 characters' : '••••••••'} />
+                        <button className="ssi-eye" type="button" aria-label={showPw ? 'Hide password' : 'Show password'} onClick={() => setShowPw((s) => !s)}>{showPw ? '◎' : '◉'}</button>
+                      </div>
+                    </>
+                  )}
+
+                  {mode === 'login' && (
+                    <div className="ssi-row">
+                      <label className="ssi-remember"><input type="checkbox" checked={remember} onChange={(e) => setRemember(e.target.checked)} /> <span>remember me</span></label>
+                      <button type="button" className="ssi-link" onClick={() => switchMode('forgot')}>forgot password?</button>
+                    </div>
+                  )}
+
+                  <div className="ssi-captcha"><Captcha ref={captchaRef} onChange={setCaptchaToken} /></div>
+
+                  {unverified && (
+                    <button type="button" className="ssi-guest ssi-resend" onClick={() => resend(email.trim().toLowerCase())}>resend verification email ↻</button>
+                  )}
+
+                  <button className="ssi-primary" type="submit" disabled={busy}>
+                    <span>{busy ? 'please wait…' : mode === 'login' ? 'sign in' : mode === 'signup' ? 'create account' : 'send reset link'}</span><b>→</b>
+                  </button>
+                  <p className="ssi-msg" role="alert">{error}</p>
+                  {info && <p className="ssi-info" role="status">{info}</p>}
+                  {mode === 'forgot' && (
+                    <button type="button" className="ssi-link ssi-center" onClick={() => switchMode('login')}>← back to sign in</button>
+                  )}
+                </form>
+
+                {mode !== 'forgot' && (
+                  <>
+                    <div className="ssi-or"><span>or</span></div>
+                    <button className="ssi-guest" type="button" onClick={() => nav('/home')}>continue as guest <span>↗</span></button>
+                    <p className="ssi-guestnote">No account needed to search and compare. Sign in later to save things.</p>
+                  </>
+                )}
+              </>
+            )}
+          </div>
+        </section>
+      </section>
+    </main>
   );
 }

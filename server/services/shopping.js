@@ -258,50 +258,71 @@ const OFFER_HOURS = 24;
 
 // Newer SerpApi lookup (immersive product, needs the token from the search result),
 // with the older google_product lookup as a fallback.
-export const storeDebug = {};
 async function fetchSellers(productId, token) {
   let rows = [];
-  storeDebug.calls = [];
   if (token) {
     const data = await callSerpApi({ engine: 'google_immersive_product', page_token: token, gl: 'in', hl: 'en' });
     rows = data.product_results?.stores || data.stores || [];
-    storeDebug.calls.push({ engine: 'immersive', keys: Object.keys(data), prKeys: Object.keys(data.product_results || {}), err: data.error, rows: rows.length, sample: rows[0] });
   }
   if (!rows.length && productId) {
     const data = await callSerpApi({ engine: 'google_product', product_id: productId, gl: 'in', hl: 'en', google_domain: 'google.co.in' });
     rows = data.sellers_results?.online_sellers || data.online_sellers || [];
-    storeDebug.calls.push({ engine: 'product', keys: Object.keys(data), err: data.error, rows: rows.length });
   }
-  return rows
-    .map((r) => ({
-      store: String(r.name || r.seller || r.source || '').trim(),
-      url: r.direct_link || r.link || null,
-      price: toNumber(r.extracted_total ?? r.total_price ?? r.extracted_price ?? r.base_price ?? r.price),
-    }))
-    .filter((r) => r.store && r.url && /^https?:\/\//.test(r.url));
+  return rows.map(mapSeller).filter((r) => r && r.store && r.url && /^https?:\/\//.test(r.url));
+}
+
+// One seller row -> what the "all stores" panel needs. Tolerant of field-name differences.
+function mapSeller(r) {
+  const price = toNumber(r.extracted_price ?? r.base_price ?? r.price);
+  if (!price) return null;
+  const details = [].concat(r.details_and_offers || [], r.details || [], r.shipping || [], r.delivery || [], r.tag || [], r.offers || [])
+    .map((d) => (typeof d === 'string' ? d : d?.text || d?.title || '')).filter(Boolean).map(String);
+  const totalGiven = toNumber(r.extracted_total ?? r.total_price ?? r.total);
+  const deliveryLine = details.find((d) => /deliver|shipping/i.test(d)) || '';
+  let delivery = parseDelivery(deliveryLine, price);
+  if (delivery === null && totalGiven && totalGiven >= price) delivery = Math.round(totalGiven - price);
+  const youPay = totalGiven || (delivery !== null ? price + delivery : null);
+  const originalPrice = toNumber(r.extracted_original_price ?? r.original_price);
+  return {
+    store: String(r.name || r.seller || r.source || '').trim(),
+    url: r.direct_link || r.link || null,
+    price,
+    originalPrice: originalPrice && originalPrice > price ? originalPrice : null,
+    delivery,                                  // number or null (unknown)
+    youPay,                                    // number or null
+    verified: Boolean(totalGiven),             // true = the store/Google gave the total
+    returns: details.find((d) => /return/i.test(d)) || null,
+    details: details.slice(0, 4),
+    rating: toNumber(r.rating) || null,
+    reviews: toNumber(r.reviews) || null,
+  };
+}
+
+const sellerCacheId = (productId, token) => productId || `t-${crypto.createHash('sha1').update(String(token)).digest('hex')}`;
+
+// All sellers for one product: cached 24 h, otherwise 1 search.
+export async function getSellers({ productId, token }) {
+  if (!productId && !token) return { sellers: [], cached: false, fetchedAt: null };
+  const cacheId = sellerCacheId(productId, token);
+  if (dbReady()) {
+    const hit = await OfferCache.findOne({ productId: cacheId }).lean();
+    if (hit?.v === 2 && hit.sellers?.length && Date.now() - new Date(hit.fetchedAt).getTime() < OFFER_HOURS * 3_600_000) {
+      return { sellers: hit.sellers, cached: true, fetchedAt: hit.fetchedAt };
+    }
+  }
+  const sellers = (await fetchSellers(productId, token)).filter((s) => !/^https?:\/\/(www\.)?google\./i.test(s.url));
+  const fetchedAt = new Date();
+  if (dbReady() && sellers.length) {   // never save an empty answer
+    await OfferCache.updateOne({ productId: cacheId }, { productId: cacheId, v: 2, sellers, fetchedAt }, { upsert: true });
+  }
+  return { sellers, cached: false, fetchedAt };
 }
 
 // Returns the direct store URL for one store of one product, or null if not found.
 export async function findStoreLink({ productId, token, store }) {
   if ((!productId && !token) || !store) return null;
-  let sellers = null;
-  // cache key: the Google product id, or a hash of the token when there is no id
-  const cacheId = productId || `t-${crypto.createHash('sha1').update(String(token)).digest('hex')}`;
-  if (dbReady()) {
-    const hit = await OfferCache.findOne({ productId: cacheId }).lean();
-    if (hit?.sellers?.length && Date.now() - new Date(hit.fetchedAt).getTime() < OFFER_HOURS * 3_600_000) sellers = hit.sellers;
-  }
-  if (!sellers) {
-    sellers = await fetchSellers(productId, token);
-    if (dbReady() && sellers.length) {   // never save an empty answer
-      await OfferCache.updateOne({ productId: cacheId }, { productId: cacheId, sellers, fetchedAt: new Date() }, { upsert: true });
-    }
-  }
-  console.log(`[store-link] ${store} | id=${productId || '-'} token=${token ? 'yes' : 'no'} | sellers found: ${sellers.length}`, sellers.slice(0, 6).map((x) => `${x.store} -> ${String(x.url).slice(0, 60)}`));
+  const { sellers } = await getSellers({ productId, token });
   const want = normalise(store);
-  // never send people to another Google page
-  sellers = sellers.filter((s) => !/^https?:\/\/(www\.)?google\./i.test(s.url));
   const match = sellers.find((s) => normalise(s.store) === want) || sellers.find((s) => normalise(s.store).includes(want) || want.includes(normalise(s.store)));
-  console.log(`[store-link] matched: ${match ? match.url.slice(0, 80) : 'none'}`);
   return match ? match.url : null;
 }

@@ -1,0 +1,22 @@
+/* Style Passport questions in the holographic login look (only the one-time personalise step after registering). */
+.ssi .pf{display:grid;gap:14px}
+.ssi .pf-sec{margin:0;padding:12px 14px 14px;border:1.5px solid #7f84b4;background:rgba(255,255,255,.5);min-width:0}
+.ssi .pf-sec legend{padding:0 6px;font-weight:800;font-size:14px}
+.ssi .pf-why{margin:0 0 10px;font-size:12px;color:var(--ink-soft)}
+.ssi .pf-chips{display:flex;flex-wrap:wrap;gap:8px}
+.ssi .pf-chips button{padding:7px 13px;border:1.5px solid #626896;background:rgba(255,255,255,.7);box-shadow:2px 2px 0 #9ea3c8;font-weight:700;font-size:13px}
+.ssi .pf-chips button:hover{background:#fff}
+.ssi .pf-chips button.on{color:#fff;border-color:#505591;background:linear-gradient(90deg,var(--blue),var(--purple) 55%,var(--pink));box-shadow:2px 2px 0 #4c518d}
+.ssi .pf-sizes{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}
+.ssi .pf-sizes label{display:grid;gap:5px;font-size:12px;font-weight:800}
+.ssi .pf-sizes select,.ssi .pf-text{height:42px;padding:0 10px;border:1.5px solid #7f84b4;background:rgba(255,255,255,.8);font:inherit;width:100%}
+.ssi .pf-swatches{display:flex;flex-wrap:wrap;gap:8px}
+.ssi .pf-swatches button{display:flex;align-items:center;gap:6px;padding:5px 10px 5px 6px;border:1.5px solid #9397bb;background:rgba(255,255,255,.7);font-size:12px;font-weight:700}
+.ssi .pf-swatches i{width:18px;height:18px;border-radius:50%;border:1.5px solid #555b99}
+.ssi .pf-swatches button.on{border-color:#505591;background:#fff;box-shadow:0 0 0 2px var(--purple)}
+.ssi .pf-checks{display:grid;grid-template-columns:repeat(3,1fr);gap:8px 12px}
+.ssi .pf-checks label{display:flex;align-items:center;gap:7px;font-size:13px;font-weight:600}
+.ssi .pf-checks input{accent-color:#7168dd;width:16px;height:16px}
+.ssi:has(.pf) .ssi-entry{width:min(720px,96vw)}
+.ssi:has(.pf) .ssi-win{width:100%}
+@media(max-width:600px){.ssi .pf-checks{grid-template-columns:1fr 1fr}}

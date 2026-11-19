@@ -1,1 +1,113 @@
-import express from'express';import cors from'cors';import dotenv from'dotenv';import mongoose from'mongoose';import rateLimit from'express-rate-limit';import path from'path';import fs from'fs';import{fileURLToPath}from'url';import authRoutes from'./routes/auth.js';import productRoutes from'./routes/products.js';import wishlistRoutes from'./routes/wishlist.js';import searchRoutes from'./routes/search.js';import profileRoutes from'./routes/profile.js';import alertRoutes from'./routes/alerts.js';dotenv.config();const app=express();app.set('trust proxy',1);const allowed=[process.env.CLIENT_URL,...(process.env.CORS_ORIGINS||'').split(','),'http://localhost:5173'].map(x=>x&&x.trim().replace(/\/$/,'')).filter(Boolean);app.use(cors({origin:(o,cb)=>cb(null,!o||allowed.includes(o))}));app.use(express.json({limit:'1mb'}));app.use(rateLimit({windowMs:60_000,limit:120}));app.get('/api/health',(req,res)=>res.json({ok:true,mode:process.env.DEMO_MODE==='true'?'demo':'configured'}));app.use('/api/auth',authRoutes);app.use('/api/products',productRoutes);app.use('/api/wishlist',wishlistRoutes);app.use('/api/search',searchRoutes);app.use('/api/profile',profileRoutes);app.use('/api/alerts',alertRoutes);const dist=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'../client/dist');if(fs.existsSync(dist)){app.use(express.static(dist));app.use((req,res,next)=>{if(req.method!=='GET'||req.path.startsWith('/api'))return next();res.sendFile(path.join(dist,'index.html'))})}const port=process.env.PORT||5000;const start=async()=>{if(process.env.MONGO_URI){try{await mongoose.connect(process.env.MONGO_URI);console.log('MongoDB connected')}catch(e){console.warn('MongoDB unavailable; frontend demo still works:',e.message)}}app.listen(port,()=>console.log(`StyleScout API on ${port}`))};start();
+import express from 'express';
+import cors from 'cors';
+import dotenv from 'dotenv';
+import mongoose from 'mongoose';
+import rateLimit from 'express-rate-limit';
+import path from 'path';
+import fs from 'fs';
+import { fileURLToPath } from 'url';
+
+import authRoutes from './routes/auth.js';
+import productRoutes from './routes/products.js';
+import wishlistRoutes from './routes/wishlist.js';
+import searchRoutes from './routes/search.js';
+import profileRoutes from './routes/profile.js';
+import alertRoutes from './routes/alerts.js';
+import historyRoutes from './routes/history.js';
+
+dotenv.config();
+
+const app = express();
+
+app.set('trust proxy', 1);
+
+const allowed = [
+  process.env.CLIENT_URL,
+  ...(process.env.CORS_ORIGINS || '').split(','),
+  'http://localhost:5173',
+]
+  .map((x) => x && x.trim().replace(/\/$/, ''))
+  .filter(Boolean);
+
+app.use(
+  cors({
+    origin: (o, cb) => cb(null, !o || allowed.includes(o)),
+  })
+);
+
+app.use(express.json({ limit: '1mb' }));
+
+app.use(
+  rateLimit({
+    windowMs: 60_000,
+    limit: 120,
+  })
+);
+
+app.get('/api/health', (req, res) =>
+  res.json({
+    ok: true,
+    mode: process.env.DEMO_MODE === 'true' ? 'demo' : 'configured',
+  })
+);
+
+/* ---------- API routes ---------- */
+
+app.use('/api/auth', authRoutes);
+app.use('/api/products', productRoutes);
+app.use('/api/wishlist', wishlistRoutes);
+app.use('/api/search', searchRoutes);
+app.use('/api/profile', profileRoutes);
+app.use('/api/alerts', alertRoutes);
+
+/*
+ * Price history routes.
+ *
+ * Examples:
+ * /api/history/search?q=black%20top
+ * /api/history/some-product-key
+ */
+app.use('/api/history', historyRoutes);
+
+/* ---------- Serve built React website ---------- */
+
+const dist = path.resolve(
+  path.dirname(fileURLToPath(import.meta.url)),
+  '../client/dist'
+);
+
+if (fs.existsSync(dist)) {
+  app.use(express.static(dist));
+
+  app.use((req, res, next) => {
+    if (req.method !== 'GET' || req.path.startsWith('/api')) {
+      return next();
+    }
+
+    res.sendFile(path.join(dist, 'index.html'));
+  });
+}
+
+/* ---------- Start server ---------- */
+
+const port = process.env.PORT || 5000;
+
+const start = async () => {
+  if (process.env.MONGO_URI) {
+    try {
+      await mongoose.connect(process.env.MONGO_URI);
+      console.log('MongoDB connected');
+    } catch (e) {
+      console.warn(
+        'MongoDB unavailable; frontend demo still works:',
+        e.message
+      );
+    }
+  }
+
+  app.listen(port, () => {
+    console.log(`StyleScout API on ${port}`);
+  });
+};
+
+start();
