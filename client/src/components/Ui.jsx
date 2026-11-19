@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { Link, NavLink, useNavigate } from 'react-router-dom';
 import { Home, Search, ArrowLeftRight, Heart, Bell, User } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
+import { looksLikeUrl } from '../services/api';
 
 /* ---------- Window ----------
    Plain windows have a title bar only. Minimise / maximise / close buttons
@@ -66,7 +67,9 @@ export function TopNav() {
   const [q, setQ] = useState('');
   const go = (e) => {
     e.preventDefault();
-    nav(`/search${q.trim() ? `?q=${encodeURIComponent(q.trim())}` : ''}`);
+    const v = q.trim();
+    if (looksLikeUrl(v)) nav(`/search?link=${encodeURIComponent(v)}`);
+    else nav(`/search${v ? `?q=${encodeURIComponent(v)}` : ''}`);
   };
   const items = [
     ['/home', 'home', Home],
@@ -88,7 +91,7 @@ export function TopNav() {
         </NavLink>
       </nav>
       <form className="navsearch" onSubmit={go}>
-        <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="search the site..." aria-label="search the site" />
+        <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="search or paste a link..." aria-label="search or paste a product link" />
         <button aria-label="search"><Search size={16} /></button>
       </form>
     </header>

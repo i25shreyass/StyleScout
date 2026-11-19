@@ -38,5 +38,12 @@ export async function searchRequest(q) {
   }
   const data = await res.json().catch(() => ({}));
   if (!res.ok) { const e = new Error(data.message || `Search failed (${res.status})`); e.code = data.code; throw e; }
+  if (!Array.isArray(data.results)) { const e = new Error('The search server sent an unexpected reply. Restart npm run dev.'); e.code = 'NETWORK'; throw e; }
   return data;
 }
+
+// Reads a pasted product link (free, no search quota). Returns { query, source }.
+export const readLinkRequest = (url) => post('/api/search/link', { url });
+
+// True when the text is a web link rather than search words.
+export const looksLikeUrl = (s) => /^(https?:\/\/)?(www\.)?[a-z0-9-]+(\.[a-z0-9-]+)+\/\S*/i.test(String(s || '').trim());

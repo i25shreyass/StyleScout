@@ -3,7 +3,7 @@ import { Routes, Route, Link, useNavigate, useParams, useSearchParams } from 're
 import { Trash2, Plus, Search, ChevronRight, Truck, Tag, Globe } from 'lucide-react';
 import { demoProducts, score } from './data';
 import Login from './pages/Login';
-import { searchRequest } from './services/api';
+import { searchRequest, readLinkRequest, looksLikeUrl } from './services/api';
 import VerifyEmail from './pages/VerifyEmail';
 import ResetPassword from './pages/ResetPassword';
 import { useAuth } from './context/AuthContext';
@@ -186,13 +186,30 @@ function ProductCard({ p, currency = 'INR' }) {
   );
 }
 
-function LiveCard({ p }) {
+const LINK_KEY = 'ss_link_source';
+const normQ = (q) => String(q || '').toLowerCase().replace(/[^\p{L}\p{N}\s-]/gu, ' ').replace(/\s+/g, ' ').trim();
+const readLinkSource = (q) => { try { const d = JSON.parse(sessionStorage.getItem(LINK_KEY)); return d && d.query === normQ(q) ? d.source : null; } catch { return null; } };
+const STOP = new Set(['men', 'women', 'and', 'the', 'for', 'with', 'of']);
+// Compares a result with the item from the pasted link.
+function matchInfo(p, source, query) {
+  if (!source) return null;
+  const title = p.title.toLowerCase();
+  const words = query.split(' ').filter((w) => w.length > 1 && !STOP.has(w));
+  const overlap = words.length ? words.filter((w) => title.includes(w)).length / words.length : 0;
+  const brand = (source.brand || query.split(' ')[0] || '').toLowerCase();
+  const same = (!brand || title.includes(brand)) && overlap >= 0.75;
+  const saving = source.price ? Math.round(source.price - (p.finalPrice ?? p.price)) : null;
+  return { same, saving };
+}
+
+function LiveCard({ p, match }) {
   const delivery = p.delivery === null ? null : p.delivery === 0 ? 'free delivery' : `+ ${money(p.delivery)} delivery`;
   return (
     <Window title={`${p.store.toLowerCase().replace(/\s+/g, '')}.jpg`} className="product" icon="◐">
       <a className="productpic" href={p.url || '#'} target="_blank" rel="noreferrer">
         {p.image ? <img src={p.image} alt={p.title} loading="lazy" /> : <div className="noimg">no image</div>}
         {p.belowTypical >= 15 && <span className="burst">GOOD<br />DEAL</span>}
+        {match && <span className={`matchtag${match.same ? ' same' : ''}`}>{match.same ? 'likely same item' : 'similar'}</span>}
       </a>
       <div className="pbody">
         <b className="ptitle" title={p.title}>{p.title}</b>
@@ -207,6 +224,7 @@ function LiveCard({ p }) {
         ) : (
           <div className="finalline unknown" title="This store didn't share a delivery fee. The total may be higher at checkout.">delivery: check at store</div>
         )}
+        {match?.saving > 0 && <small className="saving">₹{match.saving.toLocaleString('en-IN')} cheaper than your link</small>}
         {p.belowTypical > 0 && <small>{p.belowTypical}% below the typical price here</small>}
         {p.secondHand && <small className="tagline2">pre-owned</small>}
         {p.url
@@ -220,7 +238,32 @@ function LiveCard({ p }) {
 function SearchPage() {
   const [params, setParams] = useSearchParams();
   const urlQ = params.get('q') || '';
-  const [input, setInput] = useState(urlQ);
+  const linkParam = params.get('link') || '';
+  const [input, setInput] = useState(urlQ || linkParam);
+  const [link, setLink] = useState(null);         // { loading, error, query, source }
+  const [linkQuery, setLinkQuery] = useState('');
+  const [onlySame, setOnlySame] = useState(false);
+  const source = useMemo(() => (urlQ ? readLinkSource(urlQ) : null), [urlQ]);
+
+  // A pasted link: read it (free), then ask the user to confirm the search words.
+  useEffect(() => {
+    if (!linkParam) { setLink(null); return undefined; }
+    setInput(linkParam);
+    let dead = false;
+    setLink({ loading: true });
+    readLinkRequest(linkParam)
+      .then((d) => { if (dead) return; setLink(d); setLinkQuery(d.query); })
+      .catch((e) => { if (!dead) setLink({ error: e.message }); });
+    return () => { dead = true; };
+  }, [linkParam]);
+
+  const scoutLink = (e) => {
+    e?.preventDefault();
+    const q = linkQuery.trim();
+    if (!q) return;
+    sessionStorage.setItem(LINK_KEY, JSON.stringify({ query: normQ(q), source: link.source }));
+    setParams({ q });
+  };
   const [live, setLive] = useState(null);      // { results, cached, fetchedAt }
   const [loading, setLoading] = useState(false);
   const [notice, setNotice] = useState('');    // shown when we fall back to demo data
@@ -241,10 +284,11 @@ function SearchPage() {
 
   // Run a live search whenever the ?q= in the address changes.
   useEffect(() => {
-    setInput(urlQ);
+    if (!linkParam) setInput(urlQ);
+    setOnlySame(false);
     setAud(params.get('aud') || 'all');
     setStore('all'); setLiveCap(null); setKnownDelivery(false);
-    if (!urlQ.trim()) { setLive(null); setNotice(''); setError(''); return undefined; }
+    if (!urlQ.trim()) { setLive(null); setNotice(''); setError(''); setLoading(false); return undefined; }
     let dead = false;
     setLoading(true); setError(''); setNotice('');
     searchRequest(urlQ)
@@ -262,7 +306,8 @@ function SearchPage() {
   const submit = (e) => {
     e.preventDefault();
     const q = input.trim();
-    setParams(q ? { q } : {});
+    if (looksLikeUrl(q)) setParams({ link: q });
+    else setParams(q ? { q } : {});
   };
 
   const toggle = (key, v) => {
@@ -280,9 +325,9 @@ function SearchPage() {
     const capV = liveCap ?? liveMax;
     const eff = (p) => p.finalPrice ?? p.price;
     return live.results
-      .filter((p) => (store === 'all' || p.store === store) && p.price <= capV && (!knownDelivery || p.delivery !== null))
+      .filter((p) => (store === 'all' || p.store === store) && p.price <= capV && (!knownDelivery || p.delivery !== null) && (!onlySame || matchInfo(p, source, live.query)?.same))
       .sort((a, b) => (sort === 'final' ? eff(a) - eff(b) : sort === 'price' ? a.price - b.price : b.dealScore - a.dealScore));
-  }, [live, liveMode, store, liveCap, liveMax, knownDelivery, sort]);
+  }, [live, liveMode, store, liveCap, liveMax, knownDelivery, sort, onlySame, source]);
 
   const demoShown = useMemo(() => {
     const words = (notice ? urlQ : '').toLowerCase().split(/\s+/).filter(Boolean);
@@ -314,6 +359,7 @@ function SearchPage() {
             <b>max price <em>{money(liveCap ?? liveMax)}</em></b>
             <input type="range" min="0" max={liveMax} step="50" value={liveCap ?? liveMax} onChange={(e) => setLiveCap(Number(e.target.value))} />
             <label className="check2"><input type="checkbox" checked={knownDelivery} onChange={(e) => setKnownDelivery(e.target.checked)} /> only show known delivery cost</label>
+            {source && <label className="check2"><input type="checkbox" checked={onlySame} onChange={(e) => setOnlySame(e.target.checked)} /> only “likely same item”</label>}
             <p className="filternote">size &amp; colour matching for live results is coming next. pick your size on the store page.</p>
             <button className="btn block" onClick={() => { setStore('all'); setLiveCap(null); setKnownDelivery(false); }}>reset</button>
           </Window>
@@ -324,15 +370,15 @@ function SearchPage() {
           <Window bar={false} className="resulthead">
             <div className="rh">
               <div>
-                <h2>{urlQ ? `results for “${urlQ}”` : 'featured picks'}</h2>
+                <h2>{urlQ ? `results for “${urlQ}”` : linkParam ? 'scouting your link' : 'featured picks'}</h2>
                 <small>
-                  {loading ? 'scouting stores…' : `${count} ${liveMode ? 'live offers' : 'demo products'}`}
+                  {linkParam && !urlQ ? 'check the search words, then scout' : loading ? 'scouting stores…' : `${count} ${liveMode ? 'live offers' : 'demo products'}`}
                   {liveMode && !loading && ` · checked ${checked}${live.cached ? ' (saved)' : ''}`}
                 </small>
               </div>
               <form className="searchmini" onSubmit={submit}>
                 <Search size={15} />
-                <input value={input} onChange={(e) => setInput(e.target.value)} placeholder="try: black cargo pants" aria-label="search products" />
+                <input value={input} onChange={(e) => setInput(e.target.value)} placeholder="search or paste a product link" aria-label="search or paste a product link" />
                 <button className="btn tiny" type="submit">scout</button>
               </form>
               <select value={sort} onChange={(e) => setSort(e.target.value)} aria-label="sort">
@@ -343,19 +389,59 @@ function SearchPage() {
             </div>
           </Window>
 
+          {linkParam && !urlQ && link && (
+            <Window title="link.exe" tone="pink" icon="🔗" className="linkwin">
+              {link.loading ? <p className="lg-msg">reading your link…</p> : link.error ? (
+                <div className="linkerr"><p className="lg-msg">{link.error}</p><button className="btn blue" onClick={() => setParams({})}>ok</button></div>
+              ) : (
+                <form className="linkgrid" onSubmit={scoutLink}>
+                  {link.source.image ? <img src={link.source.image} alt="" /> : <div className="noimg small">no image</div>}
+                  <div className="linkinfo">
+                    <small>your item from <b>{link.source.store}</b>{link.source.readFrom === 'link' && ' (read from the link)'}</small>
+                    <b className="ptitle">{link.source.title}</b>
+                    <span>{link.source.price ? money(link.source.price) : 'price not readable from this store'}</span>
+                    <label className="lg-field"><span>we&apos;ll search for</span>
+                      <input value={linkQuery} onChange={(e) => setLinkQuery(e.target.value)} aria-label="search words" />
+                    </label>
+                    <div className="row"><button className="btn" type="submit">scout this →</button><button type="button" className="btn blue" onClick={() => setParams({})}>cancel</button></div>
+                    <small>uses 1 live search. edit the words if they look off.</small>
+                  </div>
+                </form>
+              )}
+            </Window>
+          )}
+
+          {source && liveMode && !loading && (() => {
+            const best = live.results.reduce((m, p) => Math.min(m, p.finalPrice ?? p.price), Infinity);
+            const bestP = live.results.find((p) => (p.finalPrice ?? p.price) === best);
+            return (
+              <div className="yourItem">
+                {source.image && <img src={source.image} alt="" />}
+                <div>
+                  <small>your link · {source.store}</small>
+                  <b>{source.title}</b>
+                  <span>{source.price ? money(source.price) : 'price not readable'}</span>
+                </div>
+                <div className="verdict">{!source.price ? 'compare the offers below ↓'
+                  : best < source.price ? <>best offer is <b>{money(source.price - best)} cheaper</b> at {bestP?.store}</>
+                  : 'the store you pasted is already the cheapest we found ♡'}</div>
+              </div>
+            );
+          })()}
+
           {notice && <div className="banner">{notice}</div>}
           {error && <div className="banner err">{error}</div>}
-          {!urlQ && <div className="banner soft">these are demo products. search above to compare live prices across stores ♡</div>}
+          {!urlQ && !linkParam && <div className="banner soft">these are demo products. search above to compare live prices across stores ♡</div>}
 
-          {loading ? (
+          {linkParam && !urlQ ? null : loading ? (
             <div className="products">{[0, 1, 2, 3, 4, 5].map((i) => <div key={i} className="skeleton" />)}</div>
           ) : liveMode ? (
-            <div className="products">{liveShown.map((p) => <LiveCard key={p.id} p={p} />)}</div>
+            <div className="products">{liveShown.map((p) => <LiveCard key={p.id} p={p} match={matchInfo(p, source, live.query)} />)}</div>
           ) : (
             <div className="products">{demoShown.map((p) => <ProductCard key={p.id} p={p} />)}</div>
           )}
 
-          {!loading && count === 0 && (
+          {!loading && count === 0 && !(linkParam && !urlQ) && (
             <div className="popwrap">
               <Window title="error.exe" tone="pink" popup icon="!" onClose={() => setParams({})}>
                 <div className="notfound">ITEM NOT FOUND :(<small>try a simpler search, like “white sneakers” or “denim jacket”.</small>
