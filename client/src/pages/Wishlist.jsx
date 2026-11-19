@@ -44,15 +44,16 @@ export default function Wishlist() {
           : loading ? <div className="empty" role="status">loading your saved finds…</div>
           : error ? <div className="empty" role="alert"><p>{error}</p><button className="btn" onClick={() => { setLoading(true); getWishlistRequest(token).then(setItems).catch((e) => setError(e.message)).finally(() => setLoading(false)); }}>try again</button></div>
           : items.length ? <div className="wishlist">{items.map((item) => {
-            const difference = Number(item.savedPrice) - Number(item.latestPrice);
+            const latest = Number(item.latestPrice ?? item.savedPrice);
+            const difference = Number(item.savedPrice) - latest;
             return <article className="wish" key={item.productKey}>
               {item.image ? <img src={item.image} alt={item.title} loading="lazy" /> : <div className="noimg">no image</div>}
               <b>{item.title}</b><span className="storeline"><strong>{item.store}</strong></span>
-              <div className="savedprices"><span>saved at <b>{money(item.savedPrice)}</b></span><span>latest <b>{money(item.latestPrice)}</b></span>
+              <div className="savedprices"><span>saved at <b>{money(item.savedPrice)}</b></span><span>latest <b>{money(latest)}</b></span>
                 {difference > 0 ? <small className="saving">{money(difference)} cheaper since you saved</small> : difference < 0 ? <small>up {money(-difference)} since you saved</small> : <small>same price as when saved</small>}
               </div>
               <div className="row">
-                {item.url ? <a className="btn tiny" href={item.url} target="_blank" rel="noreferrer">view at store ↗</a> : <span className="btn tiny blue">store link unavailable</span>}
+                {item.url ? <a className="btn tiny" href={item.url} target="_blank" rel="noopener noreferrer">view at store ↗</a> : <span className="btn tiny blue">store link unavailable</span>}
                 <button className="btn blue tiny" aria-label={`remove ${item.title}`} disabled={removing === item.productKey} onClick={() => remove(item)}><Trash2 size={14} /></button>
               </div>
             </article>;

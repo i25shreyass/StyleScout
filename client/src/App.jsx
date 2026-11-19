@@ -5,6 +5,8 @@ import { demoProducts, score } from './data';
 import Login from './pages/Login';
 import { searchRequest, readLinkRequest, looksLikeUrl, looksLikeImageUrl, imageSearchRequest, shrinkImage, getSizesRequest, saveSizesRequest } from './services/api';
 import VerifyEmail from './pages/VerifyEmail';
+import WishlistPage from './pages/Wishlist';
+import SaveButton from './components/SaveButton';
 import ResetPassword from './pages/ResetPassword';
 import { useAuth } from './context/AuthContext';
 import { Window, TopNav, ToastHost, toast, Phone, Disc, Sparkle, Ticker, Footer } from './components/Ui';
@@ -282,18 +284,21 @@ function StoreButton({ p }) {
   return <a className="btn block" href={href} target="_blank" rel="noopener noreferrer">view at store ↗</a>;
 }
 
-function LiveCard({ p, match, avg, sizes, fetchedAt }) {
+function LiveCard({ p, match, avg, sizes, fetchedAt, query = '' }) {
   const eff = p.finalPrice ?? p.price;
   const below = avg ? Math.round(avg - eff) : 0;
   const [kind, mySize] = sizeFor(p.title, sizes || EMPTY_SIZES);
   return (
     <Window title={`${p.store.toLowerCase().replace(/\s+/g, '')}.jpg`} className="product" icon="◐">
+      <div className="picwrap">
       <a className="productpic" href={storeHref(p) || '#'} target="_blank" rel="noopener noreferrer">
         {p.image ? <img src={p.image} alt={p.title} loading="lazy" /> : <div className="noimg">no image</div>}
         {p.belowTypical >= 15 && <span className="burst">GOOD<br />DEAL</span>}
         {match && !match.hideTag && <span className={`matchtag${match.same ? ' same' : ''}`}>{match.same ? 'likely same item' : 'similar'}</span>}
         {p.visual && <span className="matchtag">look-alike</span>}
       </a>
+      <SaveButton product={{ ...p, url: storeHref(p) || p.url }} query={query} />
+      </div>
       <div className="pbody">
         <b className="ptitle" title={p.title}>{p.title}</b>
         <div className="storeline"><strong>{p.store}</strong>{p.rating && <span>★ {p.rating}{p.reviews ? ` (${p.reviews})` : ''}</span>}</div>
@@ -623,7 +628,7 @@ function SearchPage() {
           {linkParam && !urlQ ? null : loading ? (
             <div className="products">{[0, 1, 2, 3, 4, 5].map((i) => <div key={i} className="skeleton" />)}</div>
           ) : liveMode ? (
-            <div className="products">{liveShown.map((p) => <LiveCard key={p.id} p={p} avg={liveAvg} sizes={mySizes} fetchedAt={live.fetchedAt} match={photo ? photoMatch(p, photo.source) : matchInfo(p, source, live.query)} />)}</div>
+            <div className="products">{liveShown.map((p) => <LiveCard key={p.id} p={p} avg={liveAvg} sizes={mySizes} fetchedAt={live.fetchedAt} query={live.query} match={photo ? photoMatch(p, photo.source) : matchInfo(p, source, live.query)} />)}</div>
           ) : photo ? null : (
             <div className="products">{demoShown.map((p) => <ProductCard key={p.id} p={p} />)}</div>
           )}
@@ -811,7 +816,7 @@ export default function App() {
         <Route path="/search" element={<SearchPage />} />
         <Route path="/product/:id" element={<ProductDetails />} />
         <Route path="/compare" element={<Compare />} />
-        <Route path="/wishlist" element={<Wishlist />} />
+        <Route path="/wishlist" element={<WishlistPage />} />
         <Route path="/alerts" element={<Alerts />} />
         <Route path="/profile" element={<Profile />} />
         <Route path="/admin" element={<Admin />} />

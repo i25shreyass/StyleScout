@@ -388,3 +388,7 @@ tbody tr:hover{background:var(--pink-l)}
 .refreshbtn{margin-left:8px;vertical-align:middle}
 .photolink{display:flex;gap:8px;flex-wrap:wrap;width:100%}
 .photolink input{flex:1;min-width:220px;padding:9px 12px;border:2px solid #2a2058;border-radius:6px;font:inherit;background:#fff}
+
+/* wishlist heart on live cards */
+.picwrap{position:relative}
+.picwrap .heart{z-index:2}
