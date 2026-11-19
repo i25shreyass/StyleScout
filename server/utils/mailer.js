@@ -6,6 +6,12 @@
 
 const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const clientUrl = () => (process.env.CLIENT_URL || 'http://localhost:5173').replace(/\/$/, '');
+const safeHttpUrl = (value) => {
+  try {
+    const url = new URL(String(value || ''));
+    return ['http:', 'https:'].includes(url.protocol) && !url.username && !url.password ? url.href : null;
+  } catch { return null; }
+};
 
 async function sendMail({ to, subject, html, text }) {
   const key = process.env.EMAIL_API_KEY;
@@ -67,5 +73,26 @@ export async function sendResetEmail(user, rawToken) {
     subject: 'Reset your StyleScout password',
     text: `Hi ${user.name}, reset your password (link valid for 1 hour): ${link}. If you didn't ask for this, ignore this email.`,
     html: layout('reset your password', `<p>Hi ${esc(user.name)},</p><p>We got a request to reset your password. This link works for 1 hour. If you didn't ask for this, you can safely ignore this email.</p>`, 'reset password', link),
+  });
+}
+
+export async function sendPriceAlertEmail(user, alert, newPrice) {
+  if (!process.env.EMAIL_API_KEY || !process.env.EMAIL_FROM) {
+    throw new Error('Price alert email is not configured. Set EMAIL_API_KEY and a verified EMAIL_FROM sender.');
+  }
+  const storeUrl = safeHttpUrl(alert.url);
+  const link = storeUrl || safeHttpUrl(`${clientUrl()}/alerts`) || 'https://stylescout-twyy.onrender.com/alerts';
+  const image = safeHttpUrl(alert.image);
+  const oldPrice = Number(alert.lastPrice);
+  const priceText = (value) => `₹${Number(value).toLocaleString('en-IN', { maximumFractionDigits: 0 })}`;
+  const imageHtml = image
+    ? `<p style="text-align:center"><img src="${esc(image)}" alt="${esc(alert.title)}" width="220" style="max-width:100%;height:auto;border:2px solid #2b2559"></p>`
+    : '';
+  const body = `${imageHtml}<p>Hi ${esc(user.name || 'there')},</p><p><b>${esc(alert.title)}</b>${alert.store ? ` at ${esc(alert.store)}` : ''} reached your target price!</p><p style="text-align:center;font-size:18px"><s>${priceText(oldPrice)}</s> &rarr; <b>${priceText(newPrice)}</b></p>`;
+  await sendMail({
+    to: user.email,
+    subject: `Price drop: ${String(alert.title).replace(/[\r\n]/g, ' ').slice(0, 100)}`,
+    text: `Hi ${user.name || 'there'}, ${alert.title}${alert.store ? ` at ${alert.store}` : ''} is now ${priceText(newPrice)} (last seen ${priceText(oldPrice)}). View it: ${link}`,
+    html: layout('price drop alert', body, 'view at store', esc(link)),
   });
 }

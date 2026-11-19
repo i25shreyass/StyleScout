@@ -174,3 +174,29 @@ export async function storeLinkRequest({ productId, token, store, fallback }) {
   if (data.direct && data.url) sessionStorage.setItem(memo, data.url);
   return data.url || fallback || null;
 }
+
+async function alertApiRequest(token, path = '', options = {}) {
+  if (!token) throw new Error('Log in to manage price alerts.');
+  let res;
+  try {
+    res = await fetch(`${BASE}/api/alerts${path}`, {
+      ...options,
+      headers: { ...(options.body ? { 'Content-Type': 'application/json' } : {}), Authorization: `Bearer ${token}`, ...options.headers },
+    });
+  } catch {
+    throw new Error('Cannot reach the server. Check that the API is running on port 5001.');
+  }
+  if (res.status === 204) return null;
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data.message || `Alert request failed (${res.status})`);
+  return data;
+}
+
+export const getAlertsRequest = (token) => alertApiRequest(token);
+export const createAlertRequest = (token, product, query, targetPrice) => alertApiRequest(token, '', {
+  method: 'POST', body: JSON.stringify({ product, query, targetPrice }),
+});
+export const updateAlertRequest = (token, id, changes) => alertApiRequest(token, `/${encodeURIComponent(id)}`, {
+  method: 'PATCH', body: JSON.stringify(changes),
+});
+export const deleteAlertRequest = (token, id) => alertApiRequest(token, `/${encodeURIComponent(id)}`, { method: 'DELETE' });

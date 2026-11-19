@@ -7,6 +7,8 @@ import { searchRequest, readLinkRequest, looksLikeUrl, looksLikeImageUrl, imageS
 import VerifyEmail from './pages/VerifyEmail';
 import WishlistPage from './pages/Wishlist';
 import SaveButton from './components/SaveButton';
+import AlertButton from './components/AlertButton';
+import AlertsPage from './pages/Alerts';
 import ResetPassword from './pages/ResetPassword';
 import { useAuth } from './context/AuthContext';
 import { Window, TopNav, ToastHost, toast, Phone, Disc, Sparkle, Ticker, Footer } from './components/Ui';
@@ -331,6 +333,7 @@ function LiveCard({ p, match, avg, sizes, fetchedAt, query = '' }) {
         {p.url
           ? <StoreButton p={p} />
           : <span className="btn block blue">link unavailable</span>}
+        <AlertButton product={p} query={query} />
       </div>
     </Window>
   );
@@ -817,7 +820,7 @@ export default function App() {
         <Route path="/product/:id" element={<ProductDetails />} />
         <Route path="/compare" element={<Compare />} />
         <Route path="/wishlist" element={<WishlistPage />} />
-        <Route path="/alerts" element={<Alerts />} />
+        <Route path="/alerts" element={<AlertsPage />} />
         <Route path="/profile" element={<Profile />} />
         <Route path="/admin" element={<Admin />} />
         <Route path="*" element={<Landing />} />
