@@ -392,3 +392,416 @@ tbody tr:hover{background:var(--pink-l)}
 /* wishlist heart on live cards */
 .picwrap{position:relative}
 .picwrap .heart{z-index:2}
+
+/* =========================================================
+   TEAMMATE 3 — PRICE HISTORY + LIVE COMPARE
+   ========================================================= */
+
+.compare-toggle{
+  margin-top:2px;
+  background:#d9e8ff;
+}
+
+.compare-toggle:hover{
+  background:#ffc9e8;
+}
+
+.compare-toggle.selected{
+  background:#ffc2e6;
+  color:#241c52;
+}
+
+.compare-page{
+  width:100%;
+}
+
+.compare-page > .win{
+  width:100%;
+}
+
+.compare-page > .win > .winbody{
+  padding:20px;
+  display:block;
+}
+
+.compare-heading{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:16px;
+  margin-bottom:18px;
+  padding:14px 16px;
+  border:2px solid var(--line);
+  background:linear-gradient(
+    90deg,
+    var(--blue-l),
+    #fff,
+    var(--pink-l)
+  );
+}
+
+.compare-heading h2{
+  margin:0;
+  font-family:'Pixelify Sans',sans-serif;
+  font-size:25px;
+  text-transform:lowercase;
+}
+
+.compare-heading p{
+  margin:4px 0 0;
+  font-size:13px;
+  color:#6a6396;
+}
+
+.compare-table-wrap{
+  width:100%;
+  overflow-x:auto;
+  border:2px solid var(--line);
+  background:#fff;
+  box-shadow:var(--shadow);
+}
+
+.live-compare-table{
+  width:100%;
+  min-width:1050px;
+  border-collapse:collapse;
+}
+
+.live-compare-table thead{
+  background:linear-gradient(
+    90deg,
+    #dce9ff,
+    #f3eaff,
+    #ffd9ee
+  );
+}
+
+.live-compare-table th{
+  padding:10px 12px;
+  border-right:1px solid #d4cdec;
+  border-bottom:2px solid var(--line);
+  font-family:'Pixelify Sans',sans-serif;
+  font-size:13px;
+  color:var(--ink);
+  white-space:nowrap;
+}
+
+.live-compare-table td{
+  padding:12px;
+  border-right:1px solid #e2dcf3;
+  border-bottom:1px dashed #bbb3dc;
+  vertical-align:middle;
+  font-size:13px;
+  background:#fff;
+}
+
+.live-compare-table tbody tr:hover td{
+  background:var(--blue-l);
+}
+
+.compare-product{
+  display:flex;
+  align-items:center;
+  gap:10px;
+  min-width:210px;
+}
+
+.compare-product img{
+  width:72px !important;
+  height:88px !important;
+  min-width:72px;
+  object-fit:contain !important;
+  border:2px solid var(--line);
+  background:#fff;
+  padding:3px;
+}
+
+.compare-product > div{
+  display:grid;
+  gap:5px;
+}
+
+.compare-product b{
+  max-width:180px;
+  line-height:1.25;
+}
+
+.cheapest-badge{
+  width:max-content;
+  padding:3px 8px;
+  border:2px solid var(--line);
+  background:var(--yellow);
+  box-shadow:2px 2px 0 var(--line);
+  font-family:'Pixelify Sans',sans-serif;
+  font-size:11px;
+}
+
+.compare-winner td{
+  background:#fff8c9;
+}
+
+.compare-note{
+  margin:16px 0 0;
+  padding:10px 12px;
+  border:2px dashed #b7addc;
+  background:var(--lav-l);
+  font-size:12px;
+  color:#665e92;
+}
+
+.compare-empty{
+  min-height:270px;
+  display:grid;
+  place-items:center;
+  align-content:center;
+  gap:12px;
+  text-align:center;
+}
+
+.compare-empty > span{
+  font-size:54px;
+  color:var(--pink-d);
+}
+
+.compare-empty h2{
+  font-family:'Pixelify Sans',sans-serif;
+  font-size:28px;
+}
+
+.history-page{
+  width:100%;
+}
+
+.history-window{
+  width:100%;
+}
+
+.history-window > .winbody{
+  padding:20px;
+  display:grid;
+  gap:18px;
+}
+
+.history-heading{
+  display:flex;
+  justify-content:space-between;
+  align-items:center;
+  gap:20px;
+  padding:14px 16px;
+  border:2px solid var(--line);
+  background:linear-gradient(
+    90deg,
+    var(--blue-l),
+    #fff,
+    var(--pink-l)
+  );
+}
+
+.history-heading h2{
+  margin:3px 0;
+  font-family:'Pixelify Sans',sans-serif;
+  font-size:27px;
+}
+
+.history-current{
+  min-width:150px;
+  padding:10px 14px;
+  text-align:center;
+  border:2px solid var(--line);
+  background:var(--yellow);
+  box-shadow:var(--shadow);
+}
+
+.history-current small,
+.history-current strong{
+  display:block;
+}
+
+.history-current strong{
+  font-size:24px;
+}
+
+.history-message{
+  min-height:220px;
+  display:grid;
+  justify-items:center;
+  align-content:center;
+  gap:10px;
+  text-align:center;
+}
+
+.history-message > span{
+  font-size:44px;
+  color:var(--pink-d);
+}
+
+.history-message > b{
+  font-family:'Pixelify Sans',sans-serif;
+  font-size:24px;
+}
+
+.history-message > small{
+  color:#6a6396;
+}
+
+.pricechart{
+  width:100%;
+  padding:18px;
+  border:2px solid var(--line);
+  background:#fff;
+  box-shadow:var(--shadow);
+}
+
+.pricechart svg{
+  width:100%;
+  height:auto;
+  min-height:250px;
+}
+
+.pricechart-grid{
+  stroke:#d8d1ed;
+  stroke-width:1;
+  stroke-dasharray:5 6;
+}
+
+.pricechart-line-shadow{
+  fill:none;
+  stroke:#2b2559;
+  stroke-width:8;
+  opacity:.18;
+}
+
+.pricechart-line{
+  fill:none;
+  stroke:var(--pink-d);
+  stroke-width:4;
+}
+
+.pricechart-dot{
+  fill:#fff;
+  stroke:var(--blue-d);
+  stroke-width:4;
+}
+
+.pricechart-dot.lowest{
+  fill:var(--yellow);
+  stroke:var(--pink-d);
+  stroke-width:5;
+}
+
+.pricechart-label{
+  font-family:'Pixelify Sans',sans-serif;
+  font-size:14px;
+  fill:var(--ink);
+}
+
+.pricechart-date{
+  font-family:'DM Sans',sans-serif;
+  font-size:12px;
+  fill:#6a6396;
+}
+
+.pricechart-lowest line{
+  stroke:var(--pink-d);
+  stroke-width:2;
+  stroke-dasharray:3 3;
+}
+
+.pricechart-lowest text{
+  font-family:'Pixelify Sans',sans-serif;
+  font-size:13px;
+  fill:var(--pink-d);
+}
+
+.pricechart-empty{
+  min-height:220px;
+  display:grid;
+  justify-items:center;
+  align-content:center;
+  gap:8px;
+  text-align:center;
+  border:2px dashed #c8bde9;
+  background:var(--lav-l);
+}
+
+.pricechart-empty > span{
+  font-size:38px;
+  color:var(--pink-d);
+}
+
+.pricechart-empty b{
+  font-family:'Pixelify Sans',sans-serif;
+  font-size:21px;
+}
+
+.history-stats{
+  display:grid;
+  grid-template-columns:repeat(4,1fr);
+  gap:12px;
+}
+
+.history-stats > div{
+  padding:14px;
+  border:2px solid var(--line);
+  background:#fff;
+  text-align:center;
+  box-shadow:2px 2px 0 var(--line);
+}
+
+.history-stats span,
+.history-stats b{
+  display:block;
+}
+
+.history-stats span{
+  font-family:'Pixelify Sans',sans-serif;
+  font-size:13px;
+  color:#6a6396;
+}
+
+.history-stats b{
+  font-size:22px;
+}
+
+.history-stats .history-low{
+  background:var(--yellow);
+}
+
+.history-footer{
+  display:flex;
+  justify-content:space-between;
+  align-items:center;
+  gap:20px;
+}
+
+.history-footer small{
+  max-width:650px;
+  color:#6a6396;
+}
+
+@media(max-width:900px){
+  .compare-heading,
+  .history-heading,
+  .history-footer{
+    flex-direction:column;
+    align-items:flex-start;
+  }
+
+  .history-current{
+    width:100%;
+  }
+
+  .history-stats{
+    grid-template-columns:repeat(2,1fr);
+  }
+}
+
+@media(max-width:600px){
+  .history-stats{
+    grid-template-columns:1fr;
+  }
+
+  .pricechart{
+    padding:8px;
+  }
+}

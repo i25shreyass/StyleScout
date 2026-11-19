@@ -9,7 +9,10 @@ import WishlistPage from './pages/Wishlist';
 import SaveButton from './components/SaveButton';
 import ResetPassword from './pages/ResetPassword';
 import { useAuth } from './context/AuthContext';
-import { Window, TopNav, ToastHost, toast, Phone, Disc, Sparkle, Ticker, Footer } from './components/Ui';
+import { Window, TopNav, ToastHost, toast, Phone, Disc, Sparkle, Ticker, Footer } from './components/Ui'; 
+import CompareButton from './components/CompareButton';
+import ComparePage from './pages/Compare';
+import ProductHistory from './pages/ProductHistory';
 
 /* ---------- helpers ---------- */
 const money = (n, c = 'INR') => new Intl.NumberFormat(undefined, { style: 'currency', currency: c, maximumFractionDigits: 0 }).format(n);
@@ -287,7 +290,11 @@ function StoreButton({ p }) {
 function LiveCard({ p, match, avg, sizes, fetchedAt, query = '' }) {
   const eff = p.finalPrice ?? p.price;
   const below = avg ? Math.round(avg - eff) : 0;
-  const [kind, mySize] = sizeFor(p.title, sizes || EMPTY_SIZES);
+  const [kind, mySize] = sizeFor(
+    p.title,
+    sizes || EMPTY_SIZES
+  );
+
   return (
     <Window title={`${p.store.toLowerCase().replace(/\s+/g, '')}.jpg`} className="product" icon="◐">
       <div className="picwrap">
@@ -300,29 +307,92 @@ function LiveCard({ p, match, avg, sizes, fetchedAt, query = '' }) {
       <SaveButton product={{ ...p, url: storeHref(p) || p.url }} query={query} />
       </div>
       <div className="pbody">
-        <b className="ptitle" title={p.title}>{p.title}</b>
-        <div className="storeline"><strong>{p.store}</strong>{p.rating && <span>★ {p.rating}{p.reviews ? ` (${p.reviews})` : ''}</span>}</div>
+        <b
+          className="ptitle"
+          title={p.title}
+        >
+          {p.title}
+        </b>
+
+        <div className="storeline">
+          <strong>{p.store}</strong>
+
+          {p.rating && (
+            <span>
+              ★ {p.rating}
+              {p.reviews
+                ? ` (${p.reviews})`
+                : ''}
+            </span>
+          )}
+        </div>
+
         {p.finalPrice !== null ? (
           <div className="finalbig">
             <small>you pay</small>
-            <strong>{money(p.finalPrice)}</strong>
-            <span>{money(p.price)} item {p.delivery === 0 ? '+ free delivery' : `+ ${money(p.delivery)} delivery`}</span>
+
+            <strong>
+              {money(p.finalPrice)}
+            </strong>
+
+            <span>
+              {money(p.price)} item{' '}
+              {p.delivery === 0
+                ? '+ free delivery'
+                : `+ ${money(
+                    p.delivery
+                  )} delivery`}
+            </span>
           </div>
         ) : (
-          <div className="finalbig unknown" title="This store didn't share a delivery fee. The total may be higher at checkout.">
+          <div
+            className="finalbig unknown"
+            title="This store didn't share a delivery fee. The total may be higher at checkout."
+          >
             <small>item price</small>
-            <strong>{money(p.price)}</strong>
-            <span>+ delivery: check at store</span>
+
+            <strong>
+              {money(p.price)}
+            </strong>
+
+            <span>
+              + delivery: check at store
+            </span>
           </div>
         )}
+
         <div className="price small">
-          {p.originalPrice && <s>{money(p.originalPrice)}</s>}
-          {p.discount > 0 && <mark>{p.discount}% OFF</mark>}
+          {p.originalPrice && (
+            <s>
+              {money(p.originalPrice)}
+            </s>
+          )}
+
+          {p.discount > 0 && (
+            <mark>
+              {p.discount}% OFF
+            </mark>
+          )}
         </div>
+
         <div className="badges">
-          {below >= 50 && <span className="badge pink">{money(below)} below average</span>}
-          {p.lowestSeen && <span className="badge blue">lowest we&apos;ve seen</span>}
-          {p.droppedBy > 0 && <span className="badge green">dropped {money(p.droppedBy)}</span>}
+          {below >= 50 && (
+            <span className="badge pink">
+              {money(below)} below average
+            </span>
+          )}
+
+          {p.lowestSeen && (
+            <span className="badge blue">
+              lowest we've seen
+            </span>
+          )}
+
+          {p.droppedBy > 0 && (
+            <span className="badge green">
+              dropped {money(p.droppedBy)}
+            </span>
+          )}
         </div>
         {match?.saving > 0 && <small className="saving">₹{match.saving.toLocaleString('en-IN')} cheaper than {match.hideTag ? 'your item' : 'your link'}</small>}
         <small className="sizeline">{mySize ? <>your size: <b>{mySize}</b> · select it at the store</> : <>set your {kind} size in filters for reminders</>}</small>
@@ -331,11 +401,12 @@ function LiveCard({ p, match, avg, sizes, fetchedAt, query = '' }) {
         {p.url
           ? <StoreButton p={p} />
           : <span className="btn block blue">link unavailable</span>}
+        <CompareButton product={p} />
+        {p.id && <Link className="btn block blue" to={`/history/${encodeURIComponent(p.id)}`}>price history ★</Link>}
       </div>
     </Window>
   );
 }
-
 function SearchPage() {
   const [params, setParams] = useSearchParams();
   const urlQ = params.get('q') || '';
@@ -815,7 +886,8 @@ export default function App() {
         <Route path="/home" element={<Home />} />
         <Route path="/search" element={<SearchPage />} />
         <Route path="/product/:id" element={<ProductDetails />} />
-        <Route path="/compare" element={<Compare />} />
+        <Route path="/compare" element={<ComparePage />} />
+        <Route path="/history/:productKey" element={<ProductHistory />} />
         <Route path="/wishlist" element={<WishlistPage />} />
         <Route path="/alerts" element={<Alerts />} />
         <Route path="/profile" element={<Profile />} />
