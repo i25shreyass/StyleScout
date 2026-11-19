@@ -5,6 +5,7 @@
 import mongoose from 'mongoose';
 import SearchCache from '../models/SearchCache.js';
 import PriceSnapshot from '../models/PriceSnapshot.js';
+import OfferCache from '../models/OfferCache.js';
 
 const keys = () => (process.env.SERPAPI_KEYS || process.env.SERPAPI_KEY || '')
   .split(',').map((k) => k.trim()).filter(Boolean);
@@ -67,6 +68,7 @@ function mapResult(r, i) {
     rating: r.rating ?? null,
     reviews: r.reviews ?? null,
     secondHand: Boolean(r.second_hand_condition),
+    token: r.immersive_product_page_token || null,   // lets us look up sellers later (Sprint 5)
   };
 }
 
@@ -246,4 +248,51 @@ export async function searchByImage({ cacheKey, getImageUrl }) {
   const withHistory = await addHistory(results, fetchedAt);
   await writeCache(cacheKey, 'photo', results);
   return { query: 'photo', results: withHistory, cached: false, fetchedAt, usedToday: await searchesToday() };
+}
+
+// ---------- Sprint 5: the real store link, fetched only when someone clicks ----------
+// One google_product lookup (1 search) returns every seller for that product.
+// All sellers are cached for 24 h, so the next click on any store is free.
+const OFFER_HOURS = 24;
+
+// Newer SerpApi lookup (immersive product, needs the token from the search result),
+// with the older google_product lookup as a fallback.
+async function fetchSellers(productId, token) {
+  let rows = [];
+  if (token) {
+    const data = await callSerpApi({ engine: 'google_immersive_product', page_token: token, gl: 'in', hl: 'en' });
+    rows = data.product_results?.stores || data.stores || [];
+  }
+  if (!rows.length && productId) {
+    const data = await callSerpApi({ engine: 'google_product', product_id: productId, gl: 'in', hl: 'en', google_domain: 'google.co.in' });
+    rows = data.sellers_results?.online_sellers || data.online_sellers || [];
+  }
+  return rows
+    .map((r) => ({
+      store: String(r.name || r.seller || r.source || '').trim(),
+      url: r.direct_link || r.link || null,
+      price: toNumber(r.extracted_total ?? r.total_price ?? r.extracted_price ?? r.base_price ?? r.price),
+    }))
+    .filter((r) => r.store && r.url && /^https?:\/\//.test(r.url));
+}
+
+// Returns the direct store URL for one store of one product, or null if not found.
+export async function findStoreLink({ productId, token, store }) {
+  if ((!productId && !token) || !store) return null;
+  let sellers = null;
+  if (dbReady()) {
+    const hit = await OfferCache.findOne({ productId }).lean();
+    if (hit && Date.now() - new Date(hit.fetchedAt).getTime() < OFFER_HOURS * 3_600_000) sellers = hit.sellers;
+  }
+  if (!sellers) {
+    sellers = await fetchSellers(productId, token);
+    if (dbReady()) {
+      await OfferCache.updateOne({ productId }, { productId, sellers, fetchedAt: new Date() }, { upsert: true });
+    }
+  }
+  const want = normalise(store);
+  // never send people to another Google page
+  sellers = sellers.filter((s) => !/^https?:\/\/(www\.)?google\./i.test(s.url));
+  const match = sellers.find((s) => normalise(s.store) === want) || sellers.find((s) => normalise(s.store).includes(want) || want.includes(normalise(s.store)));
+  return match ? match.url : null;
 }

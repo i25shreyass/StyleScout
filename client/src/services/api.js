@@ -97,3 +97,16 @@ export async function saveSizesRequest(token, sizes) {
   if (!res.ok) throw new Error('Could not save your sizes');
   return res.json();
 }
+
+// Sprint 5: the store's own page for one product (1 search per product, cached 24 h).
+export async function storeLinkRequest({ productId, token, store, fallback }) {
+  const memo = `ss_store_${productId}_${store}`;
+  const known = sessionStorage.getItem(memo);
+  if (known) return known;                                    // already found this session: no server call
+  const qs = new URLSearchParams({ productId, store, fallback: fallback || '' });
+  if (token) qs.set('token', token);
+  const res = await fetch(`${BASE}/api/search/offer?${qs}`);
+  const data = await res.json().catch(() => ({}));
+  if (data.direct && data.url) sessionStorage.setItem(memo, data.url);
+  return data.url || fallback || null;
+}

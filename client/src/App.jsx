@@ -3,7 +3,7 @@ import { Routes, Route, Link, useNavigate, useParams, useSearchParams } from 're
 import { Trash2, Plus, Search, ChevronRight, Truck, Tag, Globe, Camera } from 'lucide-react';
 import { demoProducts, score } from './data';
 import Login from './pages/Login';
-import { searchRequest, readLinkRequest, looksLikeUrl, looksLikeImageUrl, imageSearchRequest, shrinkImage, getSizesRequest, saveSizesRequest } from './services/api';
+import { searchRequest, readLinkRequest, looksLikeUrl, looksLikeImageUrl, imageSearchRequest, shrinkImage, getSizesRequest, saveSizesRequest, storeLinkRequest } from './services/api';
 import VerifyEmail from './pages/VerifyEmail';
 import ResetPassword from './pages/ResetPassword';
 import { useAuth } from './context/AuthContext';
@@ -265,6 +265,31 @@ function SizePicker({ sizes, onSave }) {
 // For photo results we can't compare words, only the price of the item the photo came from (if any).
 const photoMatch = (p, src) => ({ same: false, hideTag: true, saving: src?.price ? Math.round(src.price - (p.finalPrice ?? p.price)) : null });
 
+// "view at store": opens the store's own page. The first click on a product costs 1 search;
+// the tab opens immediately so browsers don't block it.
+function StoreButton({ p }) {
+  const [busy, setBusy] = useState(false);
+  const open = async () => {
+    if (!p.url) return;
+    if (!p.id.startsWith('g-')) { window.open(p.url, '_blank', 'noopener'); return; }
+    const tab = window.open('', '_blank');
+    setBusy(true);
+    try {
+      const url = await storeLinkRequest({ productId: p.id, token: p.token, store: p.store, fallback: p.url });
+      if (tab) tab.location.href = url || p.url; else window.open(url || p.url, '_blank', 'noopener');
+    } catch {
+      if (tab) tab.location.href = p.url;
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (
+    <button type="button" className="btn block" onClick={open} disabled={busy || !p.url}>
+      {busy ? 'finding store…' : 'view at store ↗'}
+    </button>
+  );
+}
+
 function LiveCard({ p, match, avg, sizes, fetchedAt }) {
   const eff = p.finalPrice ?? p.price;
   const below = avg ? Math.round(avg - eff) : 0;
@@ -307,7 +332,7 @@ function LiveCard({ p, match, avg, sizes, fetchedAt }) {
         {fetchedAt && <small className="checked">checked {ago(fetchedAt)}</small>}
         {p.secondHand && <small className="tagline2">pre-owned</small>}
         {p.url
-          ? <a className="btn block" href={p.url} target="_blank" rel="noreferrer">view at store ↗</a>
+          ? <StoreButton p={p} />
           : <span className="btn block blue">link unavailable</span>}
       </div>
     </Window>

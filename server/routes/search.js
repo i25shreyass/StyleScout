@@ -2,7 +2,7 @@ import { Router } from 'express';
 import rateLimit from 'express-rate-limit';
 import multer from 'multer';
 import crypto from 'crypto';
-import { searchProducts, searchByImage, SearchError } from '../services/shopping.js';
+import { searchProducts, searchByImage, findStoreLink, SearchError } from '../services/shopping.js';
 import { readProductLink } from '../services/linkReader.js';
 
 const r = Router();
@@ -91,6 +91,24 @@ r.post('/image', (req, res, next) => upload.single('image')(req, res, (err) => {
     if (e instanceof SearchError) return res.status(e.status).json({ message: e.message, code: e.code });
     console.error('Image search failed:', e);
     res.status(500).json({ message: 'Photo search failed. Please try again.' });
+  }
+});
+
+// GET /api/search/offer?productId=g-123&store=Myntra&fallback=<google link>
+// Returns { url } = the store's own page when we can find it, otherwise the fallback link.
+r.get('/offer', async (req, res) => {
+  const productId = String(req.query.productId || '').replace(/^g-/, '');
+  const store = String(req.query.store || '');
+  const token = String(req.query.token || '').slice(0, 2000) || null;
+  const fallback = /^https?:\/\//.test(String(req.query.fallback || '')) ? String(req.query.fallback) : null;
+  try {
+    const url = await findStoreLink({ productId: productId || null, token, store });
+    res.json({ url: url || fallback, direct: Boolean(url) });
+  } catch (e) {
+    if (e instanceof SearchError && e.code === 'QUOTA') return res.json({ url: fallback, direct: false, note: 'out of searches today' });
+    if (e instanceof SearchError) return res.status(e.status).json({ url: fallback, direct: false, message: e.message });
+    console.error('Store link lookup failed:', e);
+    res.json({ url: fallback, direct: false });
   }
 });
 
