@@ -1073,7 +1073,7 @@ function SearchPage() {
               <div>
                 <h2>{urlQ ? `results for “${urlQ}”` : photo ? 'look-alikes for your photo' : linkParam ? 'scouting your link' : 'scouted today'}</h2>
                 <small>
-                  {linkParam && !urlQ ? 'check the search words, then scout' : loading ? 'scouting stores…' : `${count} ${liveMode ? 'offers' : 'sample products'}`}
+                  {linkParam && !urlQ ? 'check the search words, then scout' : loading ? 'scouting stores…' : (!urlQ && !linkParam && !photo && !notice) ? `${browseItems.length} real products · ordered for you or today’s mix` : `${count} ${liveMode ? 'offers' : 'sample products'}`}
                   {liveMode && !loading && ` · prices checked ${checked}`}
                   {liveMode && !loading && live.canRefresh && urlQ && <button type="button" className="btn tiny blue refreshbtn" disabled={refreshing} onClick={refreshPrices}>{refreshing ? 'refreshing…' : 'refresh prices'}</button>}
                 </small>
