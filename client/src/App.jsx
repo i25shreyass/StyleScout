@@ -3,7 +3,7 @@ import { Routes, Route, Link, useNavigate, useParams, useSearchParams } from 're
 import { Trash2, Plus, Search, ChevronRight, Truck, Tag, Globe, Camera } from 'lucide-react';
 import { demoProducts, score } from './data';
 import Login from './pages/Login';
-import { searchRequest, readLinkRequest, looksLikeUrl, looksLikeImageUrl, imageSearchRequest, shrinkImage, getSizesRequest, saveSizesRequest } from './services/api';
+import { searchRequest, readLinkRequest, looksLikeUrl, looksLikeImageUrl, imageSearchRequest, shrinkImage, getSizesRequest, saveSizesRequest, offersRequest, sizeStockRequest } from './services/api';
 import VerifyEmail from './pages/VerifyEmail';
 import WishlistPage from './pages/Wishlist';
 import SaveButton from './components/SaveButton';
@@ -297,6 +297,92 @@ function StoreButton({ p }) {
   return <a className="btn block" href={href} target="_blank" rel="noopener noreferrer">view at store ↗</a>;
 }
 
+/* ---------- Sprint 6: all stores for this exact item ---------- */
+const SIZE_LABEL = { in: ['in stock', 'ok'], out: ['sold out', 'bad'], 'not offered': ['not offered', 'bad'], unknown: ['check at store', 'unknown'] };
+
+function StoresPanel({ p, mySize, kind, onClose }) {
+  const [state, setState] = useState({ loading: true });
+  const [stock, setStock] = useState({});           // url -> 'in' | 'out' | 'not offered' | 'unknown' | 'loading'
+  useEffect(() => {
+    let dead = false;
+    offersRequest({ productId: p.id, token: p.token })
+      .then((d) => { if (!dead) setState(d); })
+      .catch((e) => { if (!dead) setState({ error: e.message }); });
+    return () => { dead = true; };
+  }, [p.id, p.token]);
+
+  // Check size stock on each store page, 3 at a time (free).
+  useEffect(() => {
+    if (!state.offers?.length || !mySize) return undefined;
+    let dead = false;
+    const urls = state.offers.map((o) => o.url);
+    setStock(Object.fromEntries(urls.map((u) => [u, 'loading'])));
+    (async () => {
+      for (let i = 0; i < urls.length; i += 3) {
+        const part = await Promise.all(urls.slice(i, i + 3).map((u) => sizeStockRequest(u, mySize).then((d) => [u, d.mine]).catch(() => [u, 'unknown'])));
+        if (dead) return;
+        setStock((s) => ({ ...s, ...Object.fromEntries(part) }));
+      }
+    })();
+    return () => { dead = true; };
+  }, [state.offers, mySize]);
+
+  const offers = state.offers || [];
+  const best = offers.find((o) => o.youPay !== null && (!mySize || stock[o.url] !== 'out')) || null;
+  return (
+    <div className="popwrap storespop" role="dialog" aria-label="all stores for this item" onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}>
+      <Window title="all_stores.exe" tone="pink" icon="⇄" popup onClose={onClose}>
+        <div className="storeshead">
+          {p.image && <img src={p.image} alt="" />}
+          <div>
+            <b>{p.title}</b>
+            <small>{mySize ? <>your {kind} size: <b>{mySize}</b></> : <>set your {kind} size in filters to check stock</>}</small>
+          </div>
+        </div>
+        {state.loading ? <p className="lg-msg">finding every store for this item… (uses 1 search the first time)</p>
+          : state.error ? <p className="lg-msg">{state.error}</p>
+          : !offers.length ? <p className="lg-msg">no other stores found for this exact item.</p>
+          : (
+            <>
+              {best && <p className="storesverdict">lowest you pay{mySize ? ' in your size' : ''}: <b>{money(best.youPay)}</b> at {best.store}</p>}
+              <div className="storestable" role="table">
+                <div className="srow shead" role="row">
+                  <span>store</span><span>item</span><span>delivery</span><span>you pay</span>{mySize && <span>size {mySize}</span>}<span>returns</span><span />
+                </div>
+                {offers.map((o) => {
+                  const st = SIZE_LABEL[stock[o.url]] || (stock[o.url] === 'loading' ? ['checking…', 'unknown'] : null);
+                  return (
+                    <div className={`srow${best && o.url === best.url ? ' best' : ''}`} role="row" key={o.url}>
+                      <span><b>{o.store}</b>{o.rating ? <small>★ {o.rating}{o.reviews ? ` (${o.reviews})` : ''}</small> : null}</span>
+                      <span>{money(o.price)}{o.originalPrice && <s>{money(o.originalPrice)}</s>}</span>
+                      <span>{o.delivery === null ? <em>check at store</em> : o.delivery === 0 ? 'free' : money(o.delivery)}</span>
+                      <span>{o.youPay !== null ? <><b>{money(o.youPay)}</b><small>{o.verified ? 'total from store' : 'estimated'}</small></> : <em>item + delivery</em>}</span>
+                      {mySize && <span className={`stock ${st?.[1] || 'unknown'}`}>{st?.[0] || 'check at store'}</span>}
+                      <span className="returns">{o.returns || <em>see store</em>}</span>
+                      <span><a className="btn tiny" href={o.url} target="_blank" rel="noopener noreferrer">visit ↗</a></span>
+                    </div>
+                  );
+                })}
+              </div>
+              <p className="disclaimer">{offers.length} stores · checked {ago(state.fetchedAt)}{state.cached ? ' (saved, free)' : ''}. size stock is read from the store&apos;s own page where it&apos;s shared; coupons and card offers aren&apos;t included.</p>
+            </>
+          )}
+      </Window>
+    </div>
+  );
+}
+
+function StoresButton({ p, mySize, kind }) {
+  const [open, setOpen] = useState(false);
+  if (!p.id?.startsWith('g-') && !p.token) return null;
+  return (
+    <>
+      <button type="button" className="btn block storesbtn" onClick={() => setOpen(true)}>⇄ all stores for this item</button>
+      {open && <StoresPanel p={p} mySize={mySize} kind={kind} onClose={() => setOpen(false)} />}
+    </>
+  );
+}
+
 function LiveCard({ p, match, avg, sizes, fetchedAt, query = '' }) {
   const eff = p.finalPrice ?? p.price;
   const below = avg ? Math.round(avg - eff) : 0;
@@ -411,6 +497,7 @@ function LiveCard({ p, match, avg, sizes, fetchedAt, query = '' }) {
         {p.url
           ? <StoreButton p={p} />
           : <span className="btn block blue">link unavailable</span>}
+        <StoresButton p={p} mySize={mySize} kind={kind} />
         <CompareButton product={{ ...p, url: storeHref(p) || p.url }} />
         {p.id && <Link className="btn block blue" to={`/history/${encodeURIComponent(p.id)}`}>price history ★</Link>}
       </div>

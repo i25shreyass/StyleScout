@@ -174,3 +174,21 @@ export async function storeLinkRequest({ productId, token, store, fallback }) {
   if (data.direct && data.url) sessionStorage.setItem(memo, data.url);
   return data.url || fallback || null;
 }
+
+// Sprint 6: every store selling this exact product (1 search the first time, then saved 24 h).
+export async function offersRequest({ productId, token }) {
+  const qs = new URLSearchParams({ productId: productId || '' });
+  if (token) qs.set('token', token);
+  let res;
+  try { res = await fetch(`${BASE}/api/search/offers?${qs}`); } catch { const e = new Error('Cannot reach the server.'); e.code = 'NETWORK'; throw e; }
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) { const e = new Error(data.message || `Could not load stores (${res.status})`); e.code = data.code; throw e; }
+  return data;
+}
+
+// Sprint 7: is this size in stock on the store's own page? (free)
+export async function sizeStockRequest(url, size) {
+  const qs = new URLSearchParams({ url, size: size || '' });
+  const res = await fetch(`${BASE}/api/search/sizes?${qs}`);
+  return res.ok ? res.json() : { status: 'unknown', mine: 'unknown', sizes: [] };
+}
