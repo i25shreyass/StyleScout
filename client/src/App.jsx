@@ -7,6 +7,8 @@ import { searchRequest, readLinkRequest, looksLikeUrl, looksLikeImageUrl, imageS
 import VerifyEmail from './pages/VerifyEmail';
 import WishlistPage from './pages/Wishlist';
 import SaveButton from './components/SaveButton';
+import Passport from './pages/Passport';
+import { usePassport, fitFor, recordSearch, getHistoryRequest } from './services/passport';
 import ResetPassword from './pages/ResetPassword';
 import { useAuth } from './context/AuthContext';
 import { Window, TopNav, ToastHost, toast, Phone, Disc, Sparkle, Ticker, Footer } from './components/Ui'; 
@@ -383,7 +385,7 @@ function StoresButton({ p, mySize, kind }) {
   );
 }
 
-function LiveCard({ p, match, avg, sizes, fetchedAt, query = '' }) {
+function LiveCard({ p, match, avg, sizes, fetchedAt, query = '', fit }) {
   const eff = p.finalPrice ?? p.price;
   const below = avg ? Math.round(avg - eff) : 0;
   const [kind, mySize] = sizeFor(
@@ -491,6 +493,7 @@ function LiveCard({ p, match, avg, sizes, fetchedAt, query = '' }) {
           )}
         </div>
         {match?.saving > 0 && <small className="saving">₹{match.saving.toLocaleString('en-IN')} cheaper than {match.hideTag ? 'your item' : 'your link'}</small>}
+        {fit?.ticks?.length > 0 && <ul className="fortick">{fit.ticks.map((t) => <li key={t}>✓ {t}</li>)}</ul>}
         <small className="sizeline">{mySize ? <>your size: <b>{mySize}</b> · select it at the store</> : <>set your {kind} size in filters for reminders</>}</small>
         {fetchedAt && <small className="checked">checked {ago(fetchedAt)}</small>}
         {p.secondHand && <small className="tagline2">pre-owned</small>}
@@ -506,6 +509,13 @@ function LiveCard({ p, match, avg, sizes, fetchedAt, query = '' }) {
 }
 function SearchPage() {
   const [params, setParams] = useSearchParams();
+  const { token } = useAuth();
+  const passport = usePassport()?.passport || null;
+  const [recent, setRecent] = useState([]);
+  useEffect(() => {
+    if (!token) { setRecent([]); return; }
+    getHistoryRequest(token).then((h) => setRecent((h || []).filter((x) => x.kind === 'text').slice(0, 6))).catch(() => setRecent([]));
+  }, [token]);
   const urlQ = params.get('q') || '';
   const linkParam = params.get('link') || '';
   const [input, setInput] = useState(urlQ || linkParam);
@@ -563,7 +573,9 @@ function SearchPage() {
     setLoading(true);
     try {
       const blob = file ? await shrinkImage(file) : null;
-      setLive(await imageSearchRequest({ blob, url }));
+      const d = await imageSearchRequest({ blob, url });
+      setLive(d);
+      recordSearch(token, { query: source?.title ? `photo of ${source.title}`.slice(0, 120) : 'photo search', kind: 'photo', results: d.results.length });
     } catch (e) {
       setError(e.message);
     } finally {
@@ -601,7 +613,13 @@ function SearchPage() {
     let dead = false;
     setLoading(true); setError(''); setNotice('');
     searchRequest(urlQ)
-      .then((d) => { if (!dead) setLive(d); })
+      .then((d) => {
+        if (dead) return;
+        setLive(d);
+        let fromLink = null;
+        try { const s = JSON.parse(sessionStorage.getItem(LINK_KEY) || 'null'); if (s?.query === normQ(urlQ)) fromLink = s.source?.url; } catch { /* ignore */ }
+        recordSearch(token, fromLink ? { query: urlQ, kind: 'link', link: fromLink, results: d.results.length } : { query: urlQ, kind: 'text', results: d.results.length });
+      })
       .catch((e) => {
         if (dead) return;
         setLive(null);
@@ -643,8 +661,10 @@ function SearchPage() {
     const eff = (p) => p.finalPrice ?? p.price;
     return live.results
       .filter((p) => (store === 'all' || p.store === store) && p.price <= capV && (!knownDelivery || p.delivery !== null) && (!onlySame || matchInfo(p, source, live.query)?.same))
-      .sort((a, b) => (sort === 'final' ? eff(a) - eff(b) : sort === 'price' ? a.price - b.price : b.dealScore - a.dealScore));
-  }, [live, liveMode, store, liveCap, liveMax, knownDelivery, sort, onlySame, source]);
+      .sort((a, b) => (sort === 'final' ? eff(a) - eff(b) : sort === 'price' ? a.price - b.price
+        : sort === 'foryou' ? (fitFor(b, passport).score - fitFor(a, passport).score) || (b.dealScore - a.dealScore)
+        : b.dealScore - a.dealScore));
+  }, [live, liveMode, store, liveCap, liveMax, knownDelivery, sort, onlySame, source, passport]);
 
   const demoShown = useMemo(() => {
     const words = (notice ? urlQ : '').toLowerCase().split(/\s+/).filter(Boolean);
@@ -704,6 +724,7 @@ function SearchPage() {
               </form>
               <select value={sort} onChange={(e) => setSort(e.target.value)} aria-label="sort">
                 <option value="deal">best deal</option>
+                {liveMode && passport && <option value="foryou">for you ♡</option>}
                 {liveMode && <option value="final">lowest final price</option>}
                 <option value="price">lowest item price</option>
               </select>
@@ -779,6 +800,16 @@ function SearchPage() {
           {!urlQ && !linkParam && !photo && (
             <>
               <div className="banner soft">these are demo products. search above to compare live prices across stores ♡</div>
+              {recent.length > 0 && (
+                <div className="recentbar">
+                  <b>your recent searches</b>
+                  {recent.map((h) => <button key={h.id} type="button" className="chip" onClick={() => setParams({ q: h.query })}>⌕ {h.query}</button>)}
+                  <Link className="uline" to="/passport?tab=history">see all</Link>
+                </div>
+              )}
+              {token && !passport?.budget && !passport?.styles?.length && (
+                <div className="banner">✦ fill in your <Link className="uline" to="/passport">style passport</Link> and we&apos;ll tick offers that fit your budget, style and favourite stores.</div>
+              )}
               <Window title="photo.exe" tone="pink" icon="📷" className="photowin">
                 <div className="photodrop" onDragOver={(e) => e.preventDefault()} onDrop={(e) => { e.preventDefault(); pickFile(e.dataTransfer.files?.[0]); }}>
                   <p><b>search by photo</b><br />drop a picture of an outfit here, or choose one. we find look-alikes and compare prices (uses 1 live search).</p>
@@ -796,7 +827,7 @@ function SearchPage() {
           {linkParam && !urlQ ? null : loading ? (
             <div className="products">{[0, 1, 2, 3, 4, 5].map((i) => <div key={i} className="skeleton" />)}</div>
           ) : liveMode ? (
-            <div className="products">{liveShown.map((p) => <LiveCard key={p.id} p={p} avg={liveAvg} sizes={mySizes} fetchedAt={live.fetchedAt} query={live.query} match={photo ? photoMatch(p, photo.source) : matchInfo(p, source, live.query)} />)}</div>
+            <div className="products">{liveShown.map((p) => <LiveCard key={p.id} p={p} fit={fitFor(p, passport)} avg={liveAvg} sizes={mySizes} fetchedAt={live.fetchedAt} query={live.query} match={photo ? photoMatch(p, photo.source) : matchInfo(p, source, live.query)} />)}</div>
           ) : photo ? null : (
             <div className="products">{demoShown.map((p) => <ProductCard key={p.id} p={p} />)}</div>
           )}
@@ -987,7 +1018,8 @@ export default function App() {
         <Route path="/history/:productKey" element={<WithNav><ProductHistory /></WithNav>} />
         <Route path="/wishlist" element={<WishlistPage />} />
         <Route path="/alerts" element={<Alerts />} />
-        <Route path="/profile" element={<Profile />} />
+        <Route path="/profile" element={<Passport />} />
+        <Route path="/passport" element={<Passport />} />
         <Route path="/admin" element={<Admin />} />
         <Route path="*" element={<Landing />} />
       </Routes>

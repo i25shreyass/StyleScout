@@ -826,3 +826,11 @@ tbody tr:hover{background:var(--pink-l)}
 .stock{font-size:12px;font-weight:700;padding:3px 6px;border:2px solid var(--line);border-radius:999px;justify-self:start}
 .stock.ok{background:#d8f7dd}.stock.bad{background:#ffd6ec}.stock.unknown{background:#fff;font-weight:500}
 @media(max-width:600px){.storespop{padding:8px}}
+
+/* ---- Style Passport on live cards + recent searches ---- */
+.fortick{list-style:none;margin:4px 0 2px;padding:6px 8px;border:1.5px dashed #b9a3f0;background:#faf6ff;display:grid;gap:2px}
+.fortick li{font-size:12px;font-weight:700;color:#5b48c9}
+.recentbar{display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin:12px 0}
+.recentbar b{font-size:13px;margin-right:4px}
+.recentbar .chip{padding:5px 11px;border:2px solid var(--line);background:#fff;font:inherit;font-size:13px;cursor:pointer;border-radius:999px}
+.recentbar .chip:hover{background:var(--pink-l, #ffe3f3)}

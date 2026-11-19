@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { forgotPasswordRequest, resendVerificationRequest } from '../services/api';
 import Captcha from '../components/Captcha';
+import { getProfileRequest, setPassportCache } from '../services/passport';
 import logo from '../assets/intro/stylescout-chrome-logo.webp';
 import camera from '../assets/intro/y2k-camera.webp';
 import stickers from '../assets/intro/y2k-stickers.webp';
@@ -54,8 +55,15 @@ export default function Login() {
         await forgotPasswordRequest({ email: email.trim().toLowerCase(), captchaToken });
         setSent({ type: 'reset', email: email.trim().toLowerCase() });
       } else {
-        await login(email, password, captchaToken, remember);
-        nav('/home');
+        const session = await login(email, password, captchaToken, remember);
+        // first time in? offer the optional Style Passport step
+        try {
+          const prof = await getProfileRequest(session.token);
+          setPassportCache(prof);
+          nav(prof.passport?.onboarded ? '/home' : '/passport?welcome=1');
+        } catch {
+          nav('/home');
+        }
       }
     } catch (err) {
       setError(err.message);
