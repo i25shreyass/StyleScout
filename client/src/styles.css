@@ -1335,3 +1335,27 @@ body::before{filter:none;will-change:transform}
 .dualrange input[type=range]::-moz-range-track{background:transparent}
 .dualrange input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:18px;height:18px;margin-top:5px;border-radius:50%;border:1.5px solid #57537f;background:linear-gradient(180deg,#fff,#d8d9e8 45%,#969ab8 55%,#f5f5ff);box-shadow:0 2px 4px rgba(44,39,88,.3);pointer-events:auto;cursor:pointer}
 .dualrange input[type=range]::-moz-range-thumb{width:16px;height:16px;border-radius:50%;border:1.5px solid #57537f;background:#e8e6f6;pointer-events:auto;cursor:pointer}
+
+/* bell (price alert) on the top-left of the photo, heart on the top-right, with hover labels */
+.picwrap .alert-popup-trigger.iconmode{position:absolute;left:8px;top:8px;z-index:3}
+.bell{width:36px;height:36px;border-radius:50%;border:1px solid #635e87;background:rgba(255,255,255,.88);box-shadow:0 3px 7px rgba(38,34,74,.18);display:grid;place-items:center;padding:0;font-size:16px;cursor:pointer;transition:transform .15s,background .15s}
+.bell:hover{transform:scale(1.1);background:#e6d9f4}
+.picwrap .heart{z-index:3}
+.picwrap .burst{left:auto;right:8px;top:auto;bottom:8px}
+.bell[data-tip]{position:relative}
+.picwrap .heart{position:absolute;right:8px;top:8px;left:auto;bottom:auto}
+.heart[data-tip]::after,.bell[data-tip]::after{content:attr(data-tip);position:absolute;top:calc(100% + 6px);white-space:nowrap;padding:4px 9px;border:1px solid #635e87;border-radius:999px;background:rgba(29,24,64,.88);color:#fff;font:700 11px 'DM Sans',sans-serif;letter-spacing:.02em;pointer-events:none;opacity:0;transform:translateY(-3px);transition:opacity .15s,transform .15s;z-index:5}
+.heart[data-tip]::after{right:0}
+.bell[data-tip]::after{left:0}
+.heart[data-tip]:hover::after,.bell[data-tip]:hover::after,.heart[data-tip]:focus-visible::after,.bell[data-tip]:focus-visible::after{opacity:1;transform:none}
+
+/* "all stores" pop-up: drawn on the page (not inside the card), large and easy to read */
+.storespop{position:fixed;inset:0;z-index:1000;display:grid;place-items:center;padding:3vh 3vw;overflow:hidden;background:rgba(29,24,64,.55);backdrop-filter:blur(4px);-webkit-backdrop-filter:blur(4px)}
+.storespop>.win{width:min(1180px,94vw);max-height:92vh;margin:0;display:flex;flex-direction:column;transform:none!important}
+.storespop>.win:hover{transform:none}
+.storespop>.win>.winbody{flex:1;min-height:0;overflow-y:auto;overscroll-behavior:contain;padding:20px 24px}
+.storespop .storeshead .gallery{width:200px}
+.storespop .storeshead .gallery>img{width:200px;height:230px}
+.storespop .headinfo b{font-size:20px;line-height:1.25}
+.storespop .srow{font-size:14px;padding:11px 14px}
+@media(max-width:700px){.storespop{padding:0}.storespop>.win{width:100vw;max-height:100vh;height:100vh;border-radius:0}.storespop .storeshead .gallery,.storespop .storeshead .gallery>img{width:100%}}

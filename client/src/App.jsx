@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { Routes, Route, Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { Trash2, Plus, Search, ChevronRight, Truck, Tag, Globe, Camera } from 'lucide-react';
 import { demoProducts, score } from './data';
@@ -189,18 +190,13 @@ function FeaturedBrowser({ start = 'all', perPage = 12, filter = null, onItems }
   return (
     <div className="featured">
       <div className="cattabs" role="tablist">
-        <button type="button" role="tab" aria-selected={cat === 'all'} className={cat === 'all' ? 'on' : ''} onClick={() => setCat('all')}>{plan.personal ? '♡ for you' : '✦ everything'} <small>{data.total}</small></button>
+        <button type="button" role="tab" aria-selected={cat === 'all'} className={cat === 'all' ? 'on' : ''} onClick={() => setCat('all')}>✦ everything <small>{data.total}</small></button>
         {cats.map((c) => (
           <button type="button" role="tab" key={c.key} aria-selected={cat === c.key} className={cat === c.key ? 'on' : ''} onClick={() => setCat(c.key)}>
             {c.icon} {c.label} <small>{c.items.length}</small>
           </button>
         ))}
       </div>
-      {plan.personal ? (
-        <p className="foryounote">♡ ordered for you: <b>{plan.reasons.join(' · ')}</b> · <Link className="uline" to="/profile">edit your style passport</Link></p>
-      ) : (
-        <p className="foryounote">✦ today&apos;s mix · {token ? <Link className="uline" to="/profile">fill in your style passport</Link> : <Link className="uline" to="/login">sign in</Link>} to see products ordered for your size, budget and style</p>
-      )}
       {onItems && <ReportItems items={catItems} onItems={onItems} />}
       {!items.length && <div className="banner soft">no products match these filters. try a wider price range or another colour.</div>}
       <div className="products">{items.slice(0, shown).map((p) => <LiveCard key={`${p.query}-${p.id}`} p={p} sizes={sizes} query={p.query} onImageSearch={imageSearch} />)}</div>
@@ -495,6 +491,13 @@ function ReportBox({ p, offers }) {
 
 function StoresPanel({ p, mySize, kind, onClose }) {
   const [state, setState] = useState({ loading: true });
+  useEffect(() => {
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';                 // the page behind stays still
+    const onKey = (e) => { if (e.key === 'Escape') onClose(); };
+    window.addEventListener('keydown', onKey);
+    return () => { document.body.style.overflow = prev; window.removeEventListener('keydown', onKey); };
+  }, [onClose]);
   const [stock, setStock] = useState({});           // url -> size-reader reply ('loading' while checking)
   const [img, setImg] = useState(0);
   useEffect(() => {
@@ -544,7 +547,7 @@ function StoresPanel({ p, mySize, kind, onClose }) {
             {product.brand && <small className="brandtag">{product.brand}</small>}
             <b>{product.title || p.title}</b>
             {product.rating ? <small>★ {product.rating}{product.reviews ? ` (${product.reviews} reviews)` : ''}</small> : null}
-            <small>{mySize ? <>your {kind} size: <b>{mySize}</b></> : <>set your {kind} size in filters to check stock</>}</small>
+            {mySize && <small>your {kind} size: <b>{mySize}</b></small>}
             <small className="why">grouped as the same product by Google Shopping · always check the store page before buying</small>
           </div>
         </div>
@@ -627,7 +630,7 @@ function StoresButton({ p, mySize, kind }) {
   return (
     <>
       <button type="button" className="btn block storesbtn" onClick={() => setOpen(true)}>⇄ all stores for this item</button>
-      {open && <StoresPanel p={p} mySize={mySize} kind={kind} onClose={() => setOpen(false)} />}
+      {open && createPortal(<StoresPanel p={p} mySize={mySize} kind={kind} onClose={() => setOpen(false)} />, document.body)}
     </>
   );
 }
@@ -655,6 +658,7 @@ function LiveCard({ p, match, avg, sizes, fetchedAt, query = '', fit, onImageSea
         {p.visual && <span className="matchtag">look-alike</span>}
       </div>
       <SaveButton product={{ ...p, url: storeHref(p) || p.url }} query={query} />
+      <AlertButton icon product={{ ...p, url: storeHref(p) ? new URL(storeHref(p), window.location.origin).href : p.url }} query={query} />
       </div>
       <div className="pbody">
         <b
@@ -726,11 +730,6 @@ function LiveCard({ p, match, avg, sizes, fetchedAt, query = '', fit, onImageSea
         </div>
 
         <div className="badges">
-          {below >= 50 && (
-            <span className="badge pink">
-              {money(below)} below average
-            </span>
-          )}
 
           {p.lowestSeen && (
             <span className="badge blue">
@@ -745,14 +744,12 @@ function LiveCard({ p, match, avg, sizes, fetchedAt, query = '', fit, onImageSea
           )}
         </div>
         {match?.saving > 0 && <small className="saving">₹{match.saving.toLocaleString('en-IN')} cheaper than {match.hideTag ? 'your item' : 'your link'}</small>}
-        {fit?.ticks?.length > 0 && <ul className="fortick">{fit.ticks.map((t) => <li key={t}>✓ {t}</li>)}</ul>}
-        <small className="sizeline">{mySize ? <>your size: <b>{mySize}</b> · select it at the store</> : <>set your {kind} size in filters for reminders</>}</small>
+        {mySize && <small className="sizeline">your size: <b>{mySize}</b> · select it at the store</small>}
         {fetchedAt && <small className="checked">checked {ago(fetchedAt)}</small>}
         {p.secondHand && <small className="tagline2">pre-owned</small>}
         {p.url
           ? <StoreButton p={p} />
           : <span className="btn block blue">link unavailable</span>}
-        <AlertButton product={{ ...p, url: storeHref(p) ? new URL(storeHref(p), window.location.origin).href : p.url }} query={query} />
         <StoresButton p={p} mySize={mySize} kind={kind} />
         <CompareButton product={{ ...p, url: storeHref(p) || p.url }} />
         {p.id && <Link className="btn block blue" to={`/history/${encodeURIComponent(p.id)}`}>price history ★</Link>}
@@ -980,8 +977,7 @@ function SearchPage() {
         && p.price >= minV && (liveColour === 'all' || colourOf(p.title) === liveColour) && (liveAud === 'all' || audienceOf(p.title) === liveAud || (liveAud !== 'kids' && audienceOf(p.title) === 'unisex'))
         && (brand === 'all' || brandOf(p.title) === brand) && (condition === 'all' || (condition === 'pre-owned') === Boolean(p.secondHand)) && (p.discount || 0) >= minDisc)
       .sort((a, b) => (sort === 'final' ? eff(a) - eff(b) : sort === 'price' ? a.price - b.price : sort === 'discount' ? (b.discount || 0) - (a.discount || 0)
-        : sort === 'foryou' ? (fitFor(b, passport).score - fitFor(a, passport).score) || (b.dealScore - a.dealScore)
-        : b.dealScore - a.dealScore));
+        : (fitFor(b, passport).score - fitFor(a, passport).score) || (b.dealScore - a.dealScore)));   // "best deal": quietly puts items that suit the shopper first
   }, [live, liveMode, store, liveCap, liveMin, liveAud, liveColour, liveMax, knownDelivery, sort, onlySame, source, passport, brand, condition, minDisc]);
 
   const demoShown = useMemo(() => {
@@ -1073,7 +1069,7 @@ function SearchPage() {
               <div>
                 <h2>{urlQ ? `results for “${urlQ}”` : photo ? 'look-alikes for your photo' : linkParam ? 'scouting your link' : 'scouted today'}</h2>
                 <small>
-                  {linkParam && !urlQ ? 'check the search words, then scout' : loading ? 'scouting stores…' : (!urlQ && !linkParam && !photo && !notice) ? `${browseItems.length} real products · ordered for you or today’s mix` : `${count} ${liveMode ? 'offers' : 'sample products'}`}
+                  {linkParam && !urlQ ? 'check the search words, then scout' : loading ? 'scouting stores…' : (!urlQ && !linkParam && !photo && !notice) ? `${browseItems.length} real products` : `${count} ${liveMode ? 'offers' : 'sample products'}`}
                   {liveMode && !loading && ` · prices checked ${checked}`}
                   {liveMode && !loading && live.canRefresh && urlQ && <button type="button" className="btn tiny blue refreshbtn" disabled={refreshing} onClick={refreshPrices}>{refreshing ? 'refreshing…' : 'refresh prices'}</button>}
                 </small>
@@ -1087,7 +1083,6 @@ function SearchPage() {
               </form>
               <select value={sort} onChange={(e) => setSort(e.target.value)} aria-label="sort">
                 <option value="deal">best deal</option>
-                {liveMode && passport && <option value="foryou">for you ♡</option>}
                 {liveMode && <option value="final">lowest final price</option>}
                 {liveMode && <option value="discount">largest discount</option>}
                 <option value="price">lowest item price</option>
@@ -1183,9 +1178,6 @@ function SearchPage() {
                   {recent.map((h) => <button key={h.id} type="button" className="chip" onClick={() => setParams({ q: h.query })}>⌕ {h.query}</button>)}
                   <Link className="uline" to="/passport?tab=history">see all</Link>
                 </div>
-              )}
-              {token && !passport?.budget && !passport?.styles?.length && (
-                <div className="banner">✦ fill in your <Link className="uline" to="/passport">style passport</Link> and we&apos;ll tick offers that fit your budget, style and favourite stores.</div>
               )}
               <Window title="photo.exe" tone="pink" icon="📷" className="photowin">
                 <div className="photodrop" onDragOver={(e) => e.preventDefault()} onDrop={(e) => { e.preventDefault(); pickFile(e.dataTransfer.files?.[0]); }}>

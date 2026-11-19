@@ -4,7 +4,7 @@ import { useAuth } from '../context/AuthContext';
 import { createAlertRequest } from '../services/api';
 import { Window, toast } from './Ui';
 
-export default function AlertButton({ product, query = '' }) {
+export default function AlertButton({ product, query = '', icon = false }) {
   const { token } = useAuth();
   const initialTarget = Math.max(0, Math.round(Number(product?.price) * 0.9));
   const [open, setOpen] = useState(false);
@@ -45,8 +45,10 @@ export default function AlertButton({ product, query = '' }) {
     } finally { setBusy(false); }
   };
 
-  return <div className="alert-popup-trigger">
-    <button type="button" className="btn tiny blue" onClick={(event) => { event.stopPropagation(); start(); }}>🔔 alert me</button>
+  return <div className={`alert-popup-trigger${icon ? ' iconmode' : ''}`}>
+    {icon
+      ? <button type="button" className="bell" data-tip="price-drop alert" aria-label="set a price-drop alert" onClick={(event) => { event.stopPropagation(); start(); }}>🔔</button>
+      : <button type="button" className="btn tiny blue" onClick={(event) => { event.stopPropagation(); start(); }}>🔔 alert me</button>}
     {open && createPortal(
       <div className="alert-popup-backdrop" onClick={(event) => { event.stopPropagation(); if (event.target === event.currentTarget) setOpen(false); }}>
         <div className="alert-popup-position" role="dialog" aria-modal="true" aria-label="set a price alert" onClick={(event) => event.stopPropagation()}>

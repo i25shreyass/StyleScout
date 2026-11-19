@@ -31,5 +31,5 @@ export default function SaveButton({ product, query = '' }) {
     }
   };
 
-  return <button type="button" className={`heart${saved ? ' saved' : ''}`} aria-label={saved ? 'remove from wishlist' : 'save to wishlist'} aria-pressed={saved} disabled={busy} onClick={toggle}>{saved ? '♥' : '♡'}</button>;
+  return <button type="button" className={`heart${saved ? ' saved' : ''}`} aria-label={saved ? 'remove from wishlist' : 'save to wishlist'} data-tip={saved ? 'saved · tap to remove' : 'save to wishlist'} aria-pressed={saved} disabled={busy} onClick={toggle}>{saved ? '♥' : '♡'}</button>;
 }
