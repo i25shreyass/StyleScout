@@ -3,6 +3,7 @@
 // When one key runs out, it moves to the next automatically.
 
 import mongoose from 'mongoose';
+import crypto from 'crypto';
 import SearchCache from '../models/SearchCache.js';
 import PriceSnapshot from '../models/PriceSnapshot.js';
 import OfferCache from '../models/OfferCache.js';
@@ -257,15 +258,19 @@ const OFFER_HOURS = 24;
 
 // Newer SerpApi lookup (immersive product, needs the token from the search result),
 // with the older google_product lookup as a fallback.
+export const storeDebug = {};
 async function fetchSellers(productId, token) {
   let rows = [];
+  storeDebug.calls = [];
   if (token) {
     const data = await callSerpApi({ engine: 'google_immersive_product', page_token: token, gl: 'in', hl: 'en' });
     rows = data.product_results?.stores || data.stores || [];
+    storeDebug.calls.push({ engine: 'immersive', keys: Object.keys(data), prKeys: Object.keys(data.product_results || {}), err: data.error, rows: rows.length, sample: rows[0] });
   }
   if (!rows.length && productId) {
     const data = await callSerpApi({ engine: 'google_product', product_id: productId, gl: 'in', hl: 'en', google_domain: 'google.co.in' });
     rows = data.sellers_results?.online_sellers || data.online_sellers || [];
+    storeDebug.calls.push({ engine: 'product', keys: Object.keys(data), err: data.error, rows: rows.length });
   }
   return rows
     .map((r) => ({
@@ -280,19 +285,23 @@ async function fetchSellers(productId, token) {
 export async function findStoreLink({ productId, token, store }) {
   if ((!productId && !token) || !store) return null;
   let sellers = null;
+  // cache key: the Google product id, or a hash of the token when there is no id
+  const cacheId = productId || `t-${crypto.createHash('sha1').update(String(token)).digest('hex')}`;
   if (dbReady()) {
-    const hit = await OfferCache.findOne({ productId }).lean();
-    if (hit && Date.now() - new Date(hit.fetchedAt).getTime() < OFFER_HOURS * 3_600_000) sellers = hit.sellers;
+    const hit = await OfferCache.findOne({ productId: cacheId }).lean();
+    if (hit?.sellers?.length && Date.now() - new Date(hit.fetchedAt).getTime() < OFFER_HOURS * 3_600_000) sellers = hit.sellers;
   }
   if (!sellers) {
     sellers = await fetchSellers(productId, token);
-    if (dbReady()) {
-      await OfferCache.updateOne({ productId }, { productId, sellers, fetchedAt: new Date() }, { upsert: true });
+    if (dbReady() && sellers.length) {   // never save an empty answer
+      await OfferCache.updateOne({ productId: cacheId }, { productId: cacheId, sellers, fetchedAt: new Date() }, { upsert: true });
     }
   }
+  console.log(`[store-link] ${store} | id=${productId || '-'} token=${token ? 'yes' : 'no'} | sellers found: ${sellers.length}`, sellers.slice(0, 6).map((x) => `${x.store} -> ${String(x.url).slice(0, 60)}`));
   const want = normalise(store);
   // never send people to another Google page
   sellers = sellers.filter((s) => !/^https?:\/\/(www\.)?google\./i.test(s.url));
   const match = sellers.find((s) => normalise(s.store) === want) || sellers.find((s) => normalise(s.store).includes(want) || want.includes(normalise(s.store)));
+  console.log(`[store-link] matched: ${match ? match.url.slice(0, 80) : 'none'}`);
   return match ? match.url : null;
 }
