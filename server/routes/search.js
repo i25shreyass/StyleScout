@@ -63,6 +63,25 @@ r.get('/', async (req, res) => {
   }
 });
 
+// GET /api/search/more?q=...&round=1  -> ~40 more products for the same search (1 search per round)
+// Google Shopping only returns ~40 per search, so each round searches a close variation of the words.
+const VARIATIONS = ['new arrivals', 'sale', 'trending', 'online india', 'best price', 'latest', 'premium', 'budget'];
+r.get('/more', async (req, res) => {
+  try {
+    const q = String(req.query.q || '').trim();
+    const round = Math.max(1, Math.min(VARIATIONS.length, Number(req.query.round) || 1));
+    const guard = checkQuery(q);
+    if (guard.verdict === 'block') return res.status(422).json({ code: 'NOT_FASHION', message: guard.message });
+    const variation = `${q} ${VARIATIONS[round - 1]}`;
+    const out = await searchProducts(variation);
+    res.json({ ...out, variation, round, lastRound: round >= VARIATIONS.length });
+  } catch (e) {
+    if (e instanceof SearchError) return res.status(e.status).json({ message: e.message, code: e.code });
+    console.error('More results failed:', e);
+    res.status(500).json({ message: 'Could not load more results.' });
+  }
+});
+
 // GET /api/search/featured -> real products for the homepage, by category (free: read from the database)
 r.get('/featured', async (req, res) => {
   try {

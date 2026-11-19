@@ -12,7 +12,9 @@ const keys = () => (process.env.SERPAPI_KEYS || process.env.SERPAPI_KEY || '')
   .split(',').map((k) => k.trim()).filter(Boolean);
 let keyIndex = 0;
 
-const LIMIT = () => Number(process.env.SEARCH_RESULT_LIMIT) || 40;
+// Max results kept per search. Google Shopping is asked for up to SEARCH_NUM (default 100).
+const LIMIT = () => Math.max(Number(process.env.SEARCH_RESULT_LIMIT) || 0, 120);
+const NUM = () => String(Number(process.env.SEARCH_NUM) || 100);
 const CACHE_HOURS = () => Number(process.env.SEARCH_CACHE_HOURS) || 12;
 const dbReady = () => mongoose.connection.readyState === 1;
 const memoryCache = new Map(); // used when MongoDB isn't connected
@@ -187,6 +189,7 @@ export async function searchProducts(rawQuery, { refresh = false } = {}) {
   const data = await callSerpApi({
     engine: 'google_shopping',
     q: query,
+    num: NUM(),
     google_domain: 'google.co.in',
     gl: 'in',
     hl: 'en',
@@ -194,6 +197,7 @@ export async function searchProducts(rawQuery, { refresh = false } = {}) {
   });
   const rows = Array.isArray(data.shopping_results) ? data.shopping_results : [];
   const results = scoreResults(rows.map(mapResult).filter(Boolean)).slice(0, LIMIT());
+  console.log(`[search] "${query}": Google returned ${rows.length} rows, kept ${results.length}`);
   const fetchedAt = new Date();
   const withHistory = await addHistory(results, fetchedAt);  // compare before saving today's prices
   await writeCache(key, query, results);

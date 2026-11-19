@@ -1297,3 +1297,6 @@ body::before{filter:none;will-change:transform}
 .photodrop .photolink input{flex:1;min-width:0}
 .photodrop .photolink .btn{flex:none;white-space:nowrap}
 @media(max-width:600px){.photodrop .photolink{flex-wrap:wrap}}
+
+.showmore{display:grid;justify-items:center;gap:6px;margin:6px 0 10px}
+.showmore small{opacity:.7;font-size:12px}

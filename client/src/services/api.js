@@ -237,3 +237,12 @@ export async function featuredRequest() {
   if (data.total) featuredCache = data;
   return data;
 }
+
+// "find more results": 1 search per round, a close variation of the same words.
+export async function moreResultsRequest(q, round) {
+  let res;
+  try { res = await fetch(`${BASE}/api/search/more?q=${encodeURIComponent(q)}&round=${round}`); } catch { const e = new Error('Cannot reach the server.'); e.code = 'NETWORK'; throw e; }
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) { const e = new Error(data.message || 'Could not load more results.'); e.code = data.code; throw e; }
+  return data;
+}

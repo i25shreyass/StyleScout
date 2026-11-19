@@ -3,7 +3,7 @@ import { Routes, Route, Link, useNavigate, useParams, useSearchParams } from 're
 import { Trash2, Plus, Search, ChevronRight, Truck, Tag, Globe, Camera } from 'lucide-react';
 import { demoProducts, score } from './data';
 import Login from './pages/Login';
-import { searchRequest, readLinkRequest, looksLikeUrl, looksLikeImageUrl, imageSearchRequest, shrinkImage, getSizesRequest, saveSizesRequest, offersRequest, sizeStockRequest, reportRequest, featuredRequest } from './services/api';
+import { searchRequest, readLinkRequest, looksLikeUrl, looksLikeImageUrl, imageSearchRequest, shrinkImage, getSizesRequest, saveSizesRequest, offersRequest, sizeStockRequest, reportRequest, featuredRequest, moreResultsRequest } from './services/api';
 import VerifyEmail from './pages/VerifyEmail';
 import WishlistPage from './pages/Wishlist';
 import SaveButton from './components/SaveButton';
@@ -763,6 +763,31 @@ function SearchPage() {
   const [liveCap, setLiveCap] = useState(null);
   const [liveMin, setLiveMin] = useState(null);
   const [liveAud, setLiveAud] = useState('all');
+  const PAGE = 30;
+  const [showN, setShowN] = useState(PAGE);   // results shown before "show more"
+  const [moreState, setMoreState] = useState({ round: 0, busy: false, done: false, note: '' });
+  useEffect(() => { setMoreState({ round: 0, busy: false, done: false, note: '' }); }, [urlQ]);
+  const findMore = async () => {
+    const round = moreState.round + 1;
+    setMoreState((m) => ({ ...m, busy: true, note: '' }));
+    try {
+      const d = await moreResultsRequest(urlQ, round);
+      const cur = live?.results || [];
+      const seen = new Set(cur.map((p) => p.id));
+      const seenName = new Set(cur.map((p) => `${p.store}|${normQ(p.title)}`));
+      const fresh = d.results.filter((p) => {
+        const k = `${p.store}|${normQ(p.title)}`;
+        if (seen.has(p.id) || seenName.has(k)) return false;
+        seen.add(p.id); seenName.add(k); return true;
+      });
+      const added = fresh.length;
+      setLive((c) => (c ? { ...c, results: [...c.results, ...fresh] } : c));
+      setShowN((n) => n + added);
+      setMoreState({ round, busy: false, done: Boolean(d.lastRound), note: `added ${added} new products (searched “${d.variation}”)` });
+    } catch (e) {
+      setMoreState((m) => ({ ...m, busy: false, note: e.message }));
+    }
+  };
   const [knownDelivery, setKnownDelivery] = useState(false);
   const [brand, setBrand] = useState('all');
   const [condition, setCondition] = useState('all');   // all | new | pre-owned
@@ -840,6 +865,8 @@ function SearchPage() {
     live.results.forEach((p) => { const a = audienceOf(p.title); if (a) n[a] = (n[a] || 0) + 1; });
     return ['women', 'men', 'unisex', 'kids'].filter((a) => n[a]).map((a) => [a, n[a]]);
   }, [live, liveMode]);
+
+  useEffect(() => { setShowN(PAGE); }, [live?.fetchedAt, live?.query, store, liveCap, liveMin, liveAud, knownDelivery, sort, onlySame, brand, condition, minDisc]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const liveAvg = useMemo(() => {
     if (!liveMode || !live.results.length) return 0;
@@ -1081,9 +1108,25 @@ function SearchPage() {
           ) : liveMode ? (
             (() => {
               const card = (p) => <LiveCard key={p.id} p={p} onImageSearch={imageSearch} fit={fitFor(p, passport)} avg={liveAvg} sizes={mySizes} fetchedAt={live.fetchedAt} query={live.query} match={photo ? photoMatch(p, photo.source) : matchInfo(p, source, live.query)} />;
-              if (!source || photo) return <div className="products">{liveShown.map(card)}</div>;
+              const more = (total) => (
+                <div className="showmore">
+                  {total > showN ? (
+                    <>
+                      <button type="button" className="btn blue" onClick={() => setShowN((n) => n + PAGE)}>show more ({total - showN} more)</button>
+                      <small>showing {Math.min(showN, total)} of {total} · already loaded, no extra search</small>
+                    </>
+                  ) : urlQ && !photo && !moreState.done ? (
+                    <>
+                      <button type="button" className="btn" disabled={moreState.busy} onClick={findMore}>{moreState.busy ? 'scouting more stores…' : 'find more results ✦'}</button>
+                      <small>uses 1 live search · adds up to 40 more products{moreState.note ? ` · ${moreState.note}` : ''}</small>
+                    </>
+                  ) : moreState.note ? <small>{moreState.note}{moreState.done ? ' · that’s everything for this search' : ''}</small> : null}
+                </div>
+              );
+              if (!source || photo) return <><div className="products">{liveShown.slice(0, showN).map(card)}</div>{more(liveShown.length)}</>;
               const exact = liveShown.filter((p) => matchInfo(p, source, live.query)?.same);
-              const similar = liveShown.filter((p) => !matchInfo(p, source, live.query)?.same);
+              const similarAll = liveShown.filter((p) => !matchInfo(p, source, live.query)?.same);
+              const similar = similarAll.slice(0, Math.max(0, showN - exact.length));
               return (
                 <>
                   <h3 className="sectionhead">exact matches <small>{exact.length ? `${exact.length} · same brand and product words as your link` : 'none found. the closest alternatives are below'}</small></h3>
@@ -1094,6 +1137,7 @@ function SearchPage() {
                       <div className="products">{similar.map(card)}</div>
                     </>
                   )}
+                  {!onlySame && more(exact.length + similarAll.length)}
                 </>
               );
             })()
