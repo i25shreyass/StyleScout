@@ -97,3 +97,66 @@ export async function saveSizesRequest(token, sizes) {
   if (!res.ok) throw new Error('Could not save your sizes');
   return res.json();
 }
+
+// Wishlist requests and a shared saved-key cache keep result cards from issuing
+// one GET apiece. The cache is scoped to the current token in this browser.
+const wishlistCache = new Map();
+const wishlistListeners = new Set();
+const notifyWishlist = () => wishlistListeners.forEach((listener) => listener());
+export const subscribeWishlist = (listener) => {
+  wishlistListeners.add(listener);
+  return () => wishlistListeners.delete(listener);
+};
+export const wishlistHas = (productKey) => Boolean(wishlistCache.get('active')?.items?.some((item) => item.productKey === productKey));
+
+async function wishlistRequest(token, path = '', options = {}) {
+  let res;
+  try {
+    res = await fetch(`${BASE}/api/wishlist${path}`, {
+      ...options,
+      headers: { ...(options.body ? { 'Content-Type': 'application/json' } : {}), Authorization: `Bearer ${token}`, ...options.headers },
+    });
+  } catch {
+    throw new Error('Cannot reach the server. Check that the API is running on port 5001.');
+  }
+  if (res.status === 204) return null;
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data.message || `Wishlist request failed (${res.status})`);
+  return data;
+}
+
+export function getWishlistRequest(token) {
+  if (!token) return Promise.reject(new Error('Log in to view your wishlist.'));
+  if (wishlistCache.get('active')?.token !== token) wishlistCache.set('active', { token, items: null, promise: null });
+  const state = wishlistCache.get('active');
+  if (state.items) return Promise.resolve(state.items);
+  if (!state.promise) {
+    state.promise = wishlistRequest(token).then((items) => {
+      if (wishlistCache.get('active')?.token === token) {
+        state.items = items;
+        notifyWishlist();
+      }
+      return items;
+    }).catch((error) => { state.promise = null; throw error; });
+  }
+  return state.promise;
+}
+
+export async function saveWishlistItemRequest(token, product, query) {
+  const item = await wishlistRequest(token, '', { method: 'POST', body: JSON.stringify({ ...product, productKey: product.productKey || product.id, query, price: product.price }) });
+  const state = wishlistCache.get('active');
+  if (state?.token === token && state.items) {
+    state.items = [item, ...state.items.filter((x) => x.productKey !== item.productKey)];
+    notifyWishlist();
+  }
+  return item;
+}
+
+export async function deleteWishlistItemRequest(token, productKey) {
+  await wishlistRequest(token, `/${encodeURIComponent(productKey)}`, { method: 'DELETE' });
+  const state = wishlistCache.get('active');
+  if (state?.token === token && state.items) {
+    state.items = state.items.filter((item) => item.productKey !== productKey);
+    notifyWishlist();
+  }
+}
