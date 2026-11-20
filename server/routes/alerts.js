@@ -70,6 +70,7 @@ router.post('/', async (req, res, next) => {
       active: true,
     });
     res.status(201).json(alert);
+    runAlertCheck().catch((e) => console.warn('instant alert check failed:', e.message)); // check right away, in the background
   } catch (error) { next(error); }
 });
 
